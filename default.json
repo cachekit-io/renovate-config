@@ -1,0 +1,78 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(chore)"
+  ],
+  "timezone": "Australia/Sydney",
+  "schedule": ["before 6am on Monday"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 4,
+  "minimumReleaseAge": "3 days",
+
+  "packageRules": [
+    {
+      "description": "Auto-merge patch/minor dev dependencies after CI passes (3-day age gate)",
+      "matchDepTypes": ["devDependencies", "dev", "dev-dependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Group GitHub Actions minor/patch updates (manual review — CI infrastructure)",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "github-actions",
+      "automerge": false
+    },
+    {
+      "description": "Group Rust dev dependencies",
+      "matchManagers": ["cargo"],
+      "matchDepTypes": ["dev-dependencies"],
+      "groupName": "rust-dev-deps",
+      "automerge": true
+    },
+    {
+      "description": "Group Python test/lint tools",
+      "matchManagers": ["pip_requirements", "pep621"],
+      "matchPackagePatterns": ["^pytest", "^ruff", "^basedpyright", "^hypothesis", "^faker"],
+      "groupName": "python-dev-deps",
+      "automerge": true
+    },
+    {
+      "description": "Major version bumps always need manual review",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["dependencies", "major"]
+    },
+    {
+      "description": "Security advisories bypass schedule",
+      "matchCategories": ["security"],
+      "schedule": ["at any time"],
+      "automerge": false,
+      "labels": ["dependencies", "security"],
+      "prPriority": 10
+    }
+  ],
+
+  "customManagers": [
+    {
+      "description": "Track ARG RUNNER_VERSION in runner Dockerfile against GitHub Releases",
+      "customType": "regex",
+      "fileMatch": ["(^|/)Dockerfile$"],
+      "matchStrings": [
+        "ARG\\s+RUNNER_VERSION=(?<currentValue>\\S+)\\s*\\n\\s*FROM\\s+ghcr\\.io/actions/actions-runner"
+      ],
+      "depNameTemplate": "actions/runner",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    }
+  ],
+
+  "docker": {
+    "pinDigests": true
+  }
+}
