@@ -28,7 +28,7 @@ module.exports = {
     $schema: 'https://docs.renovatebot.com/renovate-schema.json',
     extends: ['local>cachekit-io/renovate-config'],
   },
-
-  // Default log level; can be overridden per-run via workflow_dispatch input.
-  logLevel: 'info',
 };
+
+// Log level is set via the LOG_LEVEL env var in the workflow, not here.
+// `logLevel` is intentionally NOT a valid Renovate config key.
