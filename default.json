@@ -2,27 +2,58 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended",
+    "group:allNonMajor",
+    "helpers:pinGitHubActionDigests",
     ":semanticCommits",
     ":semanticCommitTypeAll(chore)"
   ],
   "timezone": "Australia/Sydney",
   "schedule": ["before 6am on Monday"],
   "labels": ["dependencies"],
-  "prConcurrentLimit": 10,
+  "prConcurrentLimit": 5,
   "prHourlyLimit": 4,
-  "minimumReleaseAge": "3 days",
+  "prCreation": "not-pending",
+  "minimumReleaseAge": "5 days",
+  "platformAutomerge": true,
+  "platformCommit": "enabled",
+  "dependencyDashboard": true,
+  "osvVulnerabilityAlerts": true,
+
+  "enabledManagers": [
+    "cargo",
+    "github-actions",
+    "npm",
+    "pep621",
+    "pip_requirements",
+    "dockerfile",
+    "docker-compose"
+  ],
+
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"],
+    "minimumReleaseAge": "0 days",
+    "labels": ["dependencies", "security"],
+    "prPriority": 10,
+    "automerge": false
+  },
+
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on Monday"],
+    "automerge": false
+  },
 
   "packageRules": [
     {
-      "description": "Auto-merge patch/minor dev dependencies after CI passes (3-day age gate)",
+      "description": "Auto-merge minor/patch dev dependencies after CI (age-gated by global minimumReleaseAge)",
       "matchDepTypes": ["devDependencies", "dev", "dev-dependencies"],
       "matchUpdateTypes": ["minor", "patch"],
       "automerge": true,
-      "automergeType": "pr",
-      "platformAutomerge": true
+      "automergeType": "pr"
     },
     {
-      "description": "Group GitHub Actions minor/patch updates (manual review — CI infrastructure)",
+      "description": "GitHub Actions: grouped manual review (CI infra blast radius)",
       "matchManagers": ["github-actions"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "github-actions",
@@ -38,7 +69,7 @@
     {
       "description": "Group Python test/lint tools",
       "matchManagers": ["pip_requirements", "pep621"],
-      "matchPackagePatterns": ["^pytest", "^ruff", "^basedpyright", "^hypothesis", "^faker"],
+      "matchPackageNames": ["pytest{/,}**", "ruff{/,}**", "basedpyright", "hypothesis", "faker"],
       "groupName": "python-dev-deps",
       "automerge": true
     },
@@ -47,14 +78,6 @@
       "matchUpdateTypes": ["major"],
       "automerge": false,
       "labels": ["dependencies", "major"]
-    },
-    {
-      "description": "Security advisories bypass schedule",
-      "matchCategories": ["security"],
-      "schedule": ["at any time"],
-      "automerge": false,
-      "labels": ["dependencies", "security"],
-      "prPriority": 10
     }
   ],
 

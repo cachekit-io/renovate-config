@@ -1,0 +1,68 @@
+name: Renovate
+
+# Self-hosted Renovate cron for the cachekit-io org.
+#
+# We run Renovate ourselves (rather than via Mend hosted) because Mend's free
+# tier imposes mode=silent on every run, which gates PRs behind manual checkbox
+# ticking. Self-hosting gives us the standard policy-driven flow: grouped PRs,
+# automerge for safe categories, dashboard issue for everything else.
+#
+# Auth: dedicated `cachekit-renovate-bot` GitHub App, installed org-wide. App
+# credentials live in this repo's secrets. The token minted here covers every
+# repo the App is installed on (autodiscover finds them).
+#
+# Schedule: hourly so security alerts (which bypass the policy schedule) get
+# acted on promptly. Non-security PRs still only fire inside the preset's
+# "before 6am Monday" window.
+
+on:
+  schedule:
+    - cron: '7 * * * *'
+  workflow_dispatch:
+    inputs:
+      log-level:
+        description: 'Renovate log level'
+        type: choice
+        default: info
+        options: [debug, info, warn, error]
+      dry-run:
+        description: 'Dry run mode (no PRs opened)'
+        type: choice
+        default: 'disabled'
+        options: ['disabled', 'extract', 'lookup', 'full']
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    name: Renovate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Mint cachekit-renovate-bot installation token (org-wide)
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RENOVATE_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+          # owner without repositories: mints a token covering every repo the
+          # App is installed on, which is what autodiscover needs.
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout config
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run Renovate
+        uses: renovatebot/github-action@693b9ef15eec82123529a37c782242f091365961 # v46.1.14
+        with:
+          configurationFile: config.js
+          token: ${{ steps.app-token.outputs.token }}
+        env:
+          LOG_LEVEL: ${{ inputs.log-level || 'info' }}
+          # Dry-run plumbing: workflow_dispatch input 'disabled' → empty env var
+          # (Renovate runs normally); any other value → that dry-run stage.
+          RENOVATE_DRY_RUN: ${{ inputs.dry-run == 'disabled' && '' || inputs.dry-run }}
