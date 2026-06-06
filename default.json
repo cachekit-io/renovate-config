@@ -8,7 +8,7 @@
     ":semanticCommitTypeAll(chore)"
   ],
   "timezone": "Australia/Sydney",
-  "schedule": ["before 6am on Monday"],
+  "schedule": ["before 6am"],
   "labels": ["dependencies"],
   "prConcurrentLimit": 5,
   "prHourlyLimit": 4,
@@ -46,9 +46,10 @@
 
   "packageRules": [
     {
-      "description": "First-party cachekit-io packages skip the release-age quarantine. minimumReleaseAge defends against third-party supply-chain attacks; it makes no sense for crates/packages we publish ourselves. This lets an internal release (e.g. a cachekit-core security patch) propagate to dependents on the next run instead of waiting 5 days. Grouping, scheduling, and major-review rules still apply.",
+      "description": "First-party cachekit-io packages propagate as fast as possible: no release-age quarantine (minimumReleaseAge defends against third-party supply-chain attacks — pointless for crates/packages we publish ourselves) and no schedule gate, so an internal release (e.g. a cachekit-core security patch) opens dependent PRs on the next hourly Renovate run instead of waiting for the daily window. Grouping and major-version manual review still apply.",
       "matchPackageNames": ["cachekit{/,}**", "@cachekit-io/**"],
-      "minimumReleaseAge": "0 days"
+      "minimumReleaseAge": "0 days",
+      "schedule": ["at any time"]
     },
     {
       "description": "Auto-merge minor/patch dev dependencies after CI (age-gated by global minimumReleaseAge)",
