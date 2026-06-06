@@ -46,6 +46,11 @@
 
   "packageRules": [
     {
+      "description": "First-party cachekit-io packages skip the release-age quarantine. minimumReleaseAge defends against third-party supply-chain attacks; it makes no sense for crates/packages we publish ourselves. This lets an internal release (e.g. a cachekit-core security patch) propagate to dependents on the next run instead of waiting 5 days. Grouping, scheduling, and major-review rules still apply.",
+      "matchPackageNames": ["cachekit{/,}**", "@cachekit-io/**"],
+      "minimumReleaseAge": "0 days"
+    },
+    {
       "description": "Auto-merge minor/patch dev dependencies after CI (age-gated by global minimumReleaseAge)",
       "matchDepTypes": ["devDependencies", "dev", "dev-dependencies"],
       "matchUpdateTypes": ["minor", "patch"],
