@@ -46,10 +46,12 @@
 
   "packageRules": [
     {
-      "description": "First-party cachekit-io packages propagate as fast as possible: no release-age quarantine (minimumReleaseAge defends against third-party supply-chain attacks — pointless for crates/packages we publish ourselves) and no schedule gate, so an internal release (e.g. a cachekit-core security patch) opens dependent PRs on the next hourly Renovate run instead of waiting for the daily window. Grouping and major-version manual review still apply.",
+      "description": "First-party cachekit-io packages propagate as fast as possible. They MUST have their own groupName: otherwise group:allNonMajor folds them into renovate/all-minor-patch, and that group follows the global (daily) schedule, silently overriding the at-any-time setting below (a grouped dep cannot keep its own schedule). With a dedicated group + no release-age quarantine (minimumReleaseAge defends against third-party supply-chain attacks, pointless for what we publish) + no schedule gate, an internal release (e.g. a cachekit-core patch) opens a dependent PR on the next hourly Renovate run. update-lockfile keeps the existing ^range and just bumps Cargo.lock. Major-version manual review still applies.",
       "matchPackageNames": ["cachekit{/,}**", "@cachekit-io/**"],
+      "groupName": "first-party cachekit",
       "minimumReleaseAge": "0 days",
-      "schedule": ["at any time"]
+      "schedule": ["at any time"],
+      "rangeStrategy": "update-lockfile"
     },
     {
       "description": "Auto-merge minor/patch dev dependencies after CI (age-gated by global minimumReleaseAge)",
