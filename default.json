@@ -10,6 +10,7 @@
   "timezone": "Australia/Sydney",
   "schedule": ["before 6am"],
   "labels": ["dependencies"],
+  "assignees": ["27Bslash6"],
   "prConcurrentLimit": 5,
   "prHourlyLimit": 4,
   "prCreation": "not-pending",
