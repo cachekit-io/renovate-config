@@ -35,7 +35,6 @@
     "schedule": ["at any time"],
     "minimumReleaseAge": "0 days",
     "labels": ["dependencies", "security"],
-    "prPriority": 10,
     "automerge": false
   },
 
@@ -87,6 +86,11 @@
       "matchUpdateTypes": ["major"],
       "automerge": false,
       "labels": ["dependencies", "major"]
+    },
+    {
+      "description": "Pin Docker images by digest",
+      "matchCategories": ["docker"],
+      "pinDigests": true
     }
   ],
 
@@ -94,7 +98,7 @@
     {
       "description": "Track ARG RUNNER_VERSION in runner Dockerfile against GitHub Releases",
       "customType": "regex",
-      "fileMatch": ["(^|/)Dockerfile$"],
+      "managerFilePatterns": ["/(^|/)Dockerfile$/"],
       "matchStrings": [
         "ARG\\s+RUNNER_VERSION=(?<currentValue>\\S+)\\s*\\n\\s*FROM\\s+ghcr\\.io/actions/actions-runner"
       ],
@@ -102,9 +106,5 @@
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver"
     }
-  ],
-
-  "docker": {
-    "pinDigests": true
-  }
+  ]
 }
