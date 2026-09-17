@@ -20,7 +20,7 @@
   "dependencyDashboard": true,
   "osvVulnerabilityAlerts": true,
   "description": [
-    "ignorePaths drops the **/test/**, **/tests/** and **/__tests__/** globs that config:recommended adds via :ignoreModulesAndTests. Test harnesses in this org carry real manifests (a vitest devDependency, a requirements.txt) and Dependabot flags them; a manifest Renovate never extracts can never receive a security PR. node_modules, bower_components, vendor, examples and __fixtures__ stay ignored."
+    "Scan manifests under `test/`, `tests/` and `__tests__/`: config:recommended ignores them via :ignoreModulesAndTests, but test harnesses in this org carry real dependencies, and a manifest Renovate never extracts can never receive a security PR."
   ],
   "ignorePaths": [
     "**/node_modules/**",
