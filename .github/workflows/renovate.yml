@@ -13,7 +13,9 @@ name: Renovate
 #
 # Schedule: hourly so security alerts (which bypass the policy schedule) get
 # acted on promptly. Non-security PRs still only fire inside the preset's
-# "before 6am Monday" window.
+# "before 6am" daily window (Australia/Sydney); lock file maintenance is
+# Monday only. GitHub delivers this cron every 2-6 hours in practice, which
+# still lands inside the window each day.
 
 on:
   schedule:

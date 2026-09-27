@@ -1,15 +1,33 @@
 # cachekit-io/renovate-config
 
-Shared Renovate preset for all cachekit-io repositories.
+Shared Renovate preset for all cachekit-io repositories (`default.json`), plus
+the self-hosted Renovate run that applies it (`config.js` +
+`.github/workflows/renovate.yml`).
 
-## What it does
+## What the preset does
 
-- Runs weekly on Monday before 6am AEST
-- Auto-merges patch/minor dev dependency updates after a 3-day age gate and CI green
-- Groups GitHub Actions, Rust dev deps, and Python test/lint tools into batched PRs
-- Security advisories bypass the schedule and get priority 10
+- Policy schedule: daily before 6am Australia/Sydney. Lock file maintenance
+  weekly, Monday before 6am
+- Security updates (GitHub Dependabot alerts and OSV) bypass the schedule and
+  the release-age quarantine, carry the `security` label, and are never
+  automerged
+- Third-party releases wait 5 days (`minimumReleaseAge`) before they are
+  proposed; first-party cachekit-io packages propagate immediately in their
+  own group
+- All minor/patch updates are grouped into one PR; GitHub Actions, Rust dev
+  deps and Python test/lint tools get their own groups. Digest-only updates
+  open their own PRs
+- Rust dev deps and the Python test/lint group automerge once the age gate
+  has passed and CI is green. npm dev dependencies are marked for automerge
+  too, but they ride in the grouped minor/patch PR, which only automerges when
+  every update in it is a dev dependency
 - Major version bumps always require manual review
-- Pins Docker image digests
+- Docker images and GitHub Actions are pinned by digest
+- Manifests under `test/`, `tests/` and `__tests__/` are scanned. This
+  overrides the ignore list `config:recommended` applies, because test
+  harnesses in this org carry real dependencies that Dependabot flags. Their
+  updates follow the same rules as everything else, dev-dependency automerge
+  included
 
 ## Per-repo setup
 
@@ -23,3 +41,34 @@ Add a `renovate.json` at the repo root:
 ```
 
 That's it. Override specific rules by adding `packageRules` after the `extends`.
+
+## Bot GitHub App permissions
+
+The run authenticates as the `cachekit-renovate-bot` GitHub App. Renovate
+needs the repository permissions below on that App. After any permission
+change the org installation has to accept the new permissions before they take
+effect.
+
+| Permission | Level | Why Renovate needs it |
+|---|---|---|
+| Contents | read & write | read manifests, push branches |
+| Pull requests | read & write | open and update PRs |
+| Issues | read & write | Dependency Dashboard issue, assignees |
+| Workflows | read & write | update pins inside `.github/workflows` |
+| Dependabot alerts | read | read the repo's vulnerability alerts. Without it every Dependency Dashboard shows "Cannot access vulnerability alerts" and only OSV-sourced security PRs are opened |
+| Commit statuses | read & write | `prCreation: not-pending` reads the combined commit status before opening a PR, and Renovate writes its own `renovate/*` statuses (release-age gate, artifact errors). Without it the run aborts with "Integration unauthorized" on the first scheduled branch and no non-security PR is ever opened |
+| Checks | read | read check runs when deciding whether a branch is green |
+| Administration | read | optional. Reads branch protection so branches that fall behind a base with strict status checks get rebased; without it that read fails quietly and such branches are never rebased |
+
+Reference: <https://docs.renovatebot.com/security-and-permissions/>
+
+## Validating changes
+
+`renovate-config-validator` auto-detects the standard repo config file names
+and `config.js`, never a preset file such as `default.json`. Name the preset
+explicitly, and validate it as repository config rather than the more
+permissive global config:
+
+```sh
+npx --yes --package renovate@43 -- renovate-config-validator --strict --no-global default.json
+```
