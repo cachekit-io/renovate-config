@@ -37,7 +37,8 @@
     "pep621",
     "pip_requirements",
     "dockerfile",
-    "docker-compose"
+    "docker-compose",
+    "custom.regex"
   ],
 
   "vulnerabilityAlerts": {
