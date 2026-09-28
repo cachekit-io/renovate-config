@@ -64,6 +64,22 @@
       "rangeStrategy": "update-lockfile"
     },
     {
+      "description": "Lock file maintenance has no release timestamp, which Renovate reads as not yet aged, so under prCreation not-pending it never creates the branch. timestamp-optional alone is not enough: not-pending would then wait for CI, and CI here only runs on pull requests. So open it at once; it never automerges. Like vulnerability PRs, it is exempt from the concurrent branch/PR caps, since it is how lockfile-only transitive alerts get fixed. Keep minimumReleaseAge set rather than null: npm refreshes derive their --before cutoff from it.",
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "prCreation": "immediate",
+      "prConcurrentLimit": 0,
+      "minimumReleaseAgeBehaviour": "timestamp-optional",
+      "prBodyNotes": [
+        "⚠️ Renovate cannot check release age for lock file maintenance. npm refreshes get a best-effort `--before` from `minimumReleaseAge`, dropped if an artifact notice says it could not be applied; pnpm and yarn refreshes get only the repository's own package-manager setting (pnpm 11 defaults to one day). Review newly resolved versions before merging."
+      ]
+    },
+    {
+      "description": "No lock file maintenance for cargo or uv: their refreshes run with no release-age cutoff at all, and uv can build sdists while it resolves.",
+      "matchManagers": ["cargo", "pep621"],
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "enabled": false
+    },
+    {
       "description": "Auto-merge minor/patch dev dependencies after CI (age-gated by global minimumReleaseAge)",
       "matchDepTypes": ["devDependencies", "dev", "dev-dependencies"],
       "matchUpdateTypes": ["minor", "patch"],

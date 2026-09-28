@@ -14,6 +14,13 @@ the self-hosted Renovate run that applies it (`config.js` +
 - Third-party releases wait 5 days (`minimumReleaseAge`) before they are
   proposed; first-party cachekit-io packages propagate immediately in their
   own group
+- Lock file maintenance PRs skip that wait: Renovate has no release date to
+  check them against. npm refreshes get a best-effort `--before` at the same
+  5 days; pnpm and yarn refreshes get only the repo's own package-manager
+  setting (pnpm 11 defaults to one day). They open without waiting for CI,
+  carry a review note, and never automerge. Cargo and uv lock files are not
+  refreshed: neither has a release-age cutoff, and uv can run builds while
+  resolving
 - All minor/patch updates are grouped into one PR; GitHub Actions, Rust dev
   deps and Python test/lint tools get their own groups. Digest-only updates
   open their own PRs
