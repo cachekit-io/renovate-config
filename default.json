@@ -13,14 +13,15 @@
   "assignees": ["27Bslash6"],
   "prConcurrentLimit": 5,
   "prHourlyLimit": 4,
-  "prCreation": "not-pending",
   "minimumReleaseAge": "5 days",
-  "platformAutomerge": true,
+  "platformAutomerge": false,
   "platformCommit": "enabled",
   "dependencyDashboard": true,
   "osvVulnerabilityAlerts": true,
   "description": [
-    "Scan manifests under `test/`, `tests/` and `__tests__/`: config:recommended ignores them via :ignoreModulesAndTests, but test harnesses in this org carry real dependencies, and a manifest Renovate never extracts can never receive a security PR."
+    "Scan manifests under `test/`, `tests/` and `__tests__/`: config:recommended ignores them via :ignoreModulesAndTests, but test harnesses in this org carry real dependencies, and a manifest Renovate never extracts can never receive a security PR.",
+    "Keep Renovate's default prCreation (immediate). CI in these repositories runs on pull requests, not on renovate/* branch pushes, so a branch has no status checks until its PR exists: not-pending or status-success would wait for checks that never start, and routine PRs would never open.",
+    "Renovate merges automerge PRs itself (platformAutomerge false) instead of arming GitHub's native auto-merge when it opens the PR. Native auto-merge waits only for the checks a branch rule marks as required. Renovate's own merge waits until every check run and commit status on the branch has passed, counts its own failed statuses (for example a lock file that failed to update) as red, and never merges a branch with no checks. Do not set internalChecksAsSuccess: with it, a PR whose only status is the passing release-age check reads as green before CI has started."
   ],
   "ignorePaths": [
     "**/node_modules/**",
@@ -64,9 +65,8 @@
       "rangeStrategy": "update-lockfile"
     },
     {
-      "description": "Lock file maintenance has no release timestamp, which Renovate reads as not yet aged, so under prCreation not-pending it never creates the branch. timestamp-optional alone is not enough: not-pending would then wait for CI, and CI here only runs on pull requests. So open it at once; it never automerges. Like vulnerability PRs, it is exempt from the concurrent branch/PR caps, since it is how lockfile-only transitive alerts get fixed. Keep minimumReleaseAge set rather than null: npm refreshes derive their --before cutoff from it.",
+      "description": "Lock file maintenance has no release timestamp, which Renovate reads as not yet aged; timestamp-optional stops its release-age status from staying pending forever. It never automerges. Like vulnerability PRs, it is exempt from the concurrent branch/PR caps, since it is how lockfile-only transitive alerts get fixed. Keep minimumReleaseAge set rather than null: npm refreshes derive their --before cutoff from it.",
       "matchUpdateTypes": ["lockFileMaintenance"],
-      "prCreation": "immediate",
       "prConcurrentLimit": 0,
       "minimumReleaseAgeBehaviour": "timestamp-optional",
       "prBodyNotes": [
@@ -112,6 +112,12 @@
       "matchUpdateTypes": ["major"],
       "automerge": false,
       "labels": ["dependencies", "major"]
+    },
+    {
+      "description": "Upper bounds on pnpm-workspace.yaml overrides are deliberate: a routine update that would cross one into a new major waits under Pending Approval on the Dependency Dashboard instead of opening a branch. Vulnerability updates are not covered: Renovate forces dependencyDashboardApproval off for them, so a repository with bounded overrides also needs a CI check that the bounds still hold.",
+      "matchDepTypes": ["pnpm-workspace.overrides"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
     },
     {
       "description": "Pin Docker images by digest",

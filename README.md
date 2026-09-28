@@ -8,6 +8,10 @@ the self-hosted Renovate run that applies it (`config.js` +
 
 - Policy schedule: daily before 6am Australia/Sydney. Lock file maintenance
   weekly, Monday before 6am
+- PRs open as soon as their branch exists (Renovate's default `prCreation`).
+  CI in these repositories runs on pull requests, not on `renovate/*` branch
+  pushes, so a branch has no checks until its PR exists; waiting for them
+  before opening the PR would mean it never opens
 - Security updates (GitHub Dependabot alerts and OSV) bypass the schedule and
   the release-age quarantine, carry the `security` label, and are never
   automerged
@@ -17,10 +21,9 @@ the self-hosted Renovate run that applies it (`config.js` +
 - Lock file maintenance PRs skip that wait: Renovate has no release date to
   check them against. npm refreshes get a best-effort `--before` at the same
   5 days; pnpm and yarn refreshes get only the repo's own package-manager
-  setting (pnpm 11 defaults to one day). They open without waiting for CI,
-  carry a review note, and never automerge. Cargo and uv lock files are not
-  refreshed: neither has a release-age cutoff, and uv can run builds while
-  resolving
+  setting (pnpm 11 defaults to one day). They carry a review note and never
+  automerge. Cargo and uv lock files are not refreshed: neither has a
+  release-age cutoff, and uv can run builds while resolving
 - All minor/patch updates are grouped into one PR; GitHub Actions, Rust dev
   deps and Python test/lint tools get their own groups. Digest-only updates
   open their own PRs
@@ -28,7 +31,18 @@ the self-hosted Renovate run that applies it (`config.js` +
   has passed and CI is green. npm dev dependencies are marked for automerge
   too, but they ride in the grouped minor/patch PR, which only automerges when
   every update in it is a dev dependency
+- Renovate does that merge itself, on a later run, and only when every check
+  run and commit status on the PR has passed; a PR with no checks never
+  automerges. It does not arm GitHub's native auto-merge
+  (`platformAutomerge: false`), because native auto-merge waits only for
+  required checks. The repository's own merge rules, such as required
+  reviews, still apply
 - Major version bumps always require manual review
+- A routine update that would move a `pnpm-workspace.yaml` override past its
+  upper bound into a new major waits under Pending Approval on the Dependency
+  Dashboard instead of opening a branch. Vulnerability updates skip that
+  approval (Renovate forces it off for them), so a repository with bounded
+  overrides also needs a CI check that the bounds still hold
 - Docker images and GitHub Actions are pinned by digest
 - Manifests under `test/`, `tests/` and `__tests__/` are scanned. This
   overrides the ignore list `config:recommended` applies, because test
@@ -63,7 +77,7 @@ effect.
 | Issues | read & write | Dependency Dashboard issue, assignees |
 | Workflows | read & write | update pins inside `.github/workflows` |
 | Dependabot alerts | read | read the repo's vulnerability alerts. Without it every Dependency Dashboard shows "Cannot access vulnerability alerts" and only OSV-sourced security PRs are opened |
-| Commit statuses | read & write | `prCreation: not-pending` reads the combined commit status before opening a PR, and Renovate writes its own `renovate/*` statuses (release-age gate, artifact errors). Without it the run aborts with "Integration unauthorized" on the first scheduled branch and no non-security PR is ever opened |
+| Commit statuses | read & write | Renovate writes its own `renovate/*` statuses (release-age gate, artifact errors) and reads the combined commit status before it automerges. Without it the run aborts with "Integration unauthorized" and no non-security PR is ever opened |
 | Checks | read | read check runs when deciding whether a branch is green |
 | Administration | read | optional. Reads branch protection so branches that fall behind a base with strict status checks get rebased; without it that read fails quietly and such branches are never rebased |
 
