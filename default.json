@@ -21,7 +21,7 @@
   "description": [
     "Scan manifests under `test/`, `tests/` and `__tests__/`: config:recommended ignores them via :ignoreModulesAndTests, but test harnesses in this org carry real dependencies, and a manifest Renovate never extracts can never receive a security PR.",
     "Keep Renovate's default prCreation (immediate). CI in these repositories runs on pull requests, not on renovate/* branch pushes, so a branch has no status checks until its PR exists: not-pending or status-success would wait for checks that never start, and routine PRs would never open.",
-    "Renovate merges automerge PRs itself (platformAutomerge false) instead of arming GitHub's native auto-merge when it opens the PR. Native auto-merge waits only for the checks a branch rule marks as required. Renovate's own merge waits until every check run and commit status on the branch has passed, counts its own failed statuses (for example a lock file that failed to update) as red, and never merges a branch with no checks. Do not set internalChecksAsSuccess: with it, a PR whose only status is the passing release-age check reads as green before CI has started."
+    "Renovate merges automerge PRs itself (platformAutomerge false) instead of arming GitHub's native auto-merge when it opens the PR. Native auto-merge waits only for the checks a branch rule marks as required. Renovate's own merge waits until nothing has failed, every check run it can see has finished as success, skipped or neutral, and every commit status other than its own passing renovate/* ones is success. Its own failed statuses (for example a lock file that failed to update) count as red, and a PR whose only statuses are its own passing ones stays pending. Checks and statuses from review bots count too, so this does not prove that CI ran: a repository that relies on automerge should require at least one CI status check. Do not set internalChecksAsSuccess: with it, a PR whose only status is the passing release-age check reads as green before CI has started."
   ],
   "ignorePaths": [
     "**/node_modules/**",
@@ -108,13 +108,18 @@
       "automerge": true
     },
     {
+      "description": "wrangler never automerges, whatever its dependency type: it is the deploy tool, so every update to it gets a human review.",
+      "matchPackageNames": ["wrangler"],
+      "automerge": false
+    },
+    {
       "description": "Major version bumps always need manual review",
       "matchUpdateTypes": ["major"],
       "automerge": false,
       "labels": ["dependencies", "major"]
     },
     {
-      "description": "Upper bounds on pnpm-workspace.yaml overrides are deliberate: a routine update that would cross one into a new major waits under Pending Approval on the Dependency Dashboard instead of opening a branch. Vulnerability updates are not covered: Renovate forces dependencyDashboardApproval off for them, so a repository with bounded overrides also needs a CI check that the bounds still hold.",
+      "description": "Upper bounds on pnpm-workspace.yaml overrides are deliberate: any major update to an override waits under Pending Approval on the Dependency Dashboard instead of opening a branch. Two cases are not held. A 0.x bound (<0.M) is not, because Renovate classes a 0.M to 0.M+1 bump as minor. Vulnerability updates are not either, because Renovate forces dependencyDashboardApproval off for them. So a repository with bounded overrides also needs a CI check that the bounds still hold.",
       "matchDepTypes": ["pnpm-workspace.overrides"],
       "matchUpdateTypes": ["major"],
       "dependencyDashboardApproval": true

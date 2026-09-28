@@ -28,21 +28,27 @@ the self-hosted Renovate run that applies it (`config.js` +
   deps and Python test/lint tools get their own groups. Digest-only updates
   open their own PRs
 - Rust dev deps and the Python test/lint group automerge once the age gate
-  has passed and CI is green. npm dev dependencies are marked for automerge
+  has passed and their checks are green. npm dev dependencies are marked for automerge
   too, but they ride in the grouped minor/patch PR, which only automerges when
   every update in it is a dev dependency
-- Renovate does that merge itself, on a later run, and only when every check
-  run and commit status on the PR has passed; a PR with no checks never
-  automerges. It does not arm GitHub's native auto-merge
+- Renovate does that merge itself, on a later run. It merges only when
+  nothing has failed, every check run it can see has finished as success,
+  skipped or neutral, and every commit status other than its own is success.
+  A PR whose only statuses are Renovate's own stays pending. Checks and
+  statuses from review bots count too, so this does not prove CI ran: a
+  repository that relies on automerge should require at least one CI status
+  check. Renovate does not arm GitHub's native auto-merge
   (`platformAutomerge: false`), because native auto-merge waits only for
   required checks. The repository's own merge rules, such as required
   reviews, still apply
+- `wrangler`, the deploy tool, never automerges
 - Major version bumps always require manual review
-- A routine update that would move a `pnpm-workspace.yaml` override past its
-  upper bound into a new major waits under Pending Approval on the Dependency
-  Dashboard instead of opening a branch. Vulnerability updates skip that
-  approval (Renovate forces it off for them), so a repository with bounded
-  overrides also needs a CI check that the bounds still hold
+- Any major update to a `pnpm-workspace.yaml` override waits under Pending
+  Approval on the Dependency Dashboard instead of opening a branch. Two cases
+  are not held: a 0.x bound (`<0.M`), because Renovate classes a 0.M to
+  0.M+1 bump as minor, and vulnerability updates, because Renovate forces the
+  approval off for them. A repository with bounded overrides therefore also
+  needs a CI check that the bounds still hold
 - Docker images and GitHub Actions are pinned by digest
 - Manifests under `test/`, `tests/` and `__tests__/` are scanned. This
   overrides the ignore list `config:recommended` applies, because test
