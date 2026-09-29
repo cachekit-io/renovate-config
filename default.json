@@ -37,6 +37,7 @@
     "npm",
     "pep621",
     "pip_requirements",
+    "pyenv",
     "dockerfile",
     "docker-compose",
     "custom.regex"
@@ -78,6 +79,13 @@
       "description": "No lock file maintenance for cargo or uv: their refreshes run with no release-age cutoff at all, and uv can build sdists while it resolves.",
       "matchManagers": ["cargo", "pep621"],
       "matchUpdateTypes": ["lockFileMaintenance"],
+      "enabled": false
+    },
+    {
+      "description": "pyenv (.python-version) updates are off by default: an interpreter bump is a runtime change its owner should ask for. A repository opts a file in with its own packageRule (matchManagers pyenv, matchFileNames that file, enabled true), for a uv project whose .python-version must match an exact requires-python: pep621 bumps requires-python, uv lock reads .python-version, so the lock only updates when both move in one branch. Both are therefore looked up in the same python-version datasource. Its X.Y releases are dated by X.Y.0, so the two bumps clear minimumReleaseAge on the same day. With pyenv's default Docker Hub datasource, a python tag is dated by its last image rebuild, which is usually younger than minimumReleaseAge: Renovate then drops the pending .python-version bump from the group and ships requires-python alone. The X.Y extraction means an opted-in file must pin X.Y, not X.Y.Z.",
+      "matchManagers": ["pyenv"],
+      "overrideDatasource": "python-version",
+      "extractVersion": "^(?<version>\\d+\\.\\d+)\\.\\d+$",
       "enabled": false
     },
     {

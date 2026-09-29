@@ -41,6 +41,12 @@ the self-hosted Renovate run that applies it (`config.js` +
   (`platformAutomerge: false`), because native auto-merge waits only for
   required checks. The repository's own merge rules, such as required
   reviews, still apply
+- `.python-version` files are off by default. A repository opts a file in
+  (a `packageRule` with `matchManagers: ["pyenv"]`, `matchFileNames` set to
+  that file and `enabled: true`) to keep it in step with `requires-python`, so
+  both move in one branch and `uv lock` resolves against the new interpreter.
+  The file must pin `X.Y`: it is looked up against python.org releases, like
+  `requires-python`, so both bumps clear the 5-day wait on the same day
 - `wrangler`, the deploy tool, never automerges
 - Major version bumps always require manual review
 - Any major update to a `pnpm-workspace.yaml` override waits under Pending
