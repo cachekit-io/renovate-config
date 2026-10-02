@@ -110,6 +110,13 @@
       "automerge": true
     },
     {
+      "description": "Cargo treats a 0.x minor bump (0.12 to 0.13) as semver-incompatible, the same as a major, but Renovate classes it as minor, so it lands in a minor/patch group. There one such bump can break the whole group: a removed feature fails the Cargo.lock update, and an API change or a higher rust-version fails CI. Each such update gets its own PR instead. 0.x patch updates stay in their group. Keep this rule after the first-party and rust-dev-deps rules: a 0.x minor of a first-party crate or a Rust dev dependency then leaves that group too, and still gets every other setting those rules give it.",
+      "matchManagers": ["cargo"],
+      "matchCurrentVersion": "<1.0.0",
+      "matchUpdateTypes": ["minor"],
+      "groupName": null
+    },
+    {
       "description": "Group Python test/lint tools",
       "matchManagers": ["pip_requirements", "pep621"],
       "matchPackageNames": ["pytest{/,}**", "ruff{/,}**", "basedpyright", "hypothesis", "faker"],

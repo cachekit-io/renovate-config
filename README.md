@@ -27,6 +27,9 @@ the self-hosted Renovate run that applies it (`config.js` +
 - All minor/patch updates are grouped into one PR; GitHub Actions, Rust dev
   deps and Python test/lint tools get their own groups. Digest-only updates
   open their own PRs
+- The exception is a cargo 0.x minor update (0.12 to 0.13). Cargo treats it as
+  breaking, so it opens its own PR instead of joining a group, first-party
+  crates and Rust dev deps included. Cargo 0.x patch updates stay grouped
 - Rust dev deps and the Python test/lint group automerge once the age gate
   has passed and their checks are green. npm dev dependencies are marked for automerge
   too, but they ride in the grouped minor/patch PR, which only automerges when
