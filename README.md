@@ -62,8 +62,8 @@ the self-hosted Renovate run that applies it (`config.js` +
 - Replacement, pin and rollback updates wait under Pending Approval on the
   Dependency Dashboard, each in a branch of its own, first-party packages
   included. Renovate does not check their release age, so the 5-day wait cannot
-  hold them. Ticking one opens its PR on the next run. Vulnerability fixes are
-  not held
+  hold them. Ticking one opens its PR on the run that creates its branch.
+  Vulnerability fixes are not held
 - Manifests under `test/`, `tests/` and `__tests__/` are scanned. This
   overrides the ignore list `config:recommended` applies, because test
   harnesses in this org carry real dependencies that Dependabot flags. Their
@@ -112,12 +112,12 @@ npm ci --ignore-scripts
 ```
 
 `renovate-config-validator` auto-detects the standard repo config file names
-and `config.js`, never a preset file such as `default.json`. Name the preset
-explicitly, and validate it as repository config rather than the more
-permissive global config:
+and `config.js`, never a preset file such as `default.json`. `npm run validate`
+names the preset explicitly and validates it as repository config rather than
+the more permissive global config. It runs only the pinned local install:
 
 ```sh
-npx renovate-config-validator --strict --no-global default.json
+npm run validate
 ```
 
 The validator does not check what a rule resolves to. `npm test` does: it

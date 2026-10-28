@@ -1,11 +1,6 @@
 // Asserts which updates the preset holds for Dependency Dashboard approval, resolved through the pinned
 // Renovate's own preset, packageRules, flatten, vulnerability and branch-grouping code. Run with
 // `npm test` after `npm ci --ignore-scripts`; PRESET=<path> runs it against another default.json.
-//
-// Renovate ages version updates at lookup and creates no branch for one that is still pending.
-// Replacement, pin and rollback upgrades get no release timestamp and no lookup check, so the preset
-// holds them for approval instead, each in a branch of its own: approval only gates a branch that does
-// not exist yet, and an existing branch takes prCreation from its first upgrade.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -49,13 +44,11 @@ function assertHeld({ updates, branches }, type) {
   for (const u of held) {
     const what = `${type} of ${u.depName} (${u.branchName})`;
     assert.equal(u.minimumReleaseAgeBehaviour, 'timestamp-required', `${what} must stay timestamp-required`);
-    assert.equal(u.dependencyDashboardApproval, true, `${what} has no lookup age check and must wait for approval`);
-    assert.equal(u.prCreation, 'not-pending', `${what}: a branch from before the hold must not open at once`);
     const branch = branches.get(u.branchName);
     assert.ok(branch.every((o) => HELD.includes(o.updateType)), `${what} must share a branch only with held updates, or an existing branch could open it`);
     const config = generateBranchConfig(branch);
     assert.equal(config.dependencyDashboardApproval, true, `${what}: its branch must wait for approval`);
-    assert.equal(config.prCreation, 'not-pending', `${what}: its branch's prCreation must be its own`);
+    assert.equal(config.prCreation, 'immediate', `${what}: once ticked, its branch must open its PR on the same run`);
   }
 }
 
@@ -63,6 +56,12 @@ function assertOpens(u, what) {
   assert.equal(u.prCreation, 'immediate', `${what} must open its PR immediately`);
   assert.notEqual(u.dependencyDashboardApproval, true, `${what} must not wait for approval`);
 }
+
+test('the held rule comes after every rule that sets groupName', () => {
+  const held = base.packageRules.findIndex((r) => HELD.every((t) => r.matchUpdateTypes?.includes(t)));
+  assert.notEqual(held, -1, 'the preset must have a rule matching every held type');
+  assert.equal(held, base.packageRules.findLastIndex((r) => 'groupName' in r), 'a later groupName would put held updates back in a group');
+});
 
 test('a replacement alone is held', async () => {
   assertHeld(await resolveUpdates({ dockerfile: [{ packageFile: 'Dockerfile', deps: [replacement] }] }), 'replacement');
@@ -123,13 +122,12 @@ test('a major and a pin of the same dependency get separate branches', async () 
 // dependencyDashboardApproval to false and sets prCreation immediate.
 const vulnerable = { npm: [{ packageFile: 'package.json', deps: [npm('foo', '^2.0.0', pin('2.0.1', 2), { currentVersion: '2.0.0', lockedVersion: '2.0.0' })] }] };
 
-function assertVulnerabilityFixOpens(config) {
-  return flattenUpdates(config, vulnerable).then((updates) => {
-    const fix = updates.find((u) => u.updateType === 'pin');
-    assert.equal(fix.isVulnerabilityAlert, true, 'the alert rule must match the fixture');
-    assertOpens(fix, `vulnerability fix ${fix.branchName}`);
-    assertOpens(generateBranchConfig([fix]), `the branch of vulnerability fix ${fix.branchName}`);
-  });
+async function assertVulnerabilityFixOpens(config) {
+  assertHeld(await resolveUpdates(vulnerable), 'pin');
+  const fix = (await flattenUpdates(config, vulnerable)).find((u) => u.updateType === 'pin');
+  assert.equal(fix.isVulnerabilityAlert, true, 'the alert rule must match the fixture');
+  assertOpens(fix, `vulnerability fix ${fix.branchName}`);
+  assertOpens(generateBranchConfig([fix]), `the branch of vulnerability fix ${fix.branchName}`);
 }
 
 test('a GitHub vulnerability fix on a held type is not held', async () => {

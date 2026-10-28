@@ -1,4 +1,11 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>cachekit-io/renovate-config"]
+  "extends": ["local>cachekit-io/renovate-config"],
+  "packageRules": [
+    {
+      "description": "The pinned Renovate CLI that npm test runs never automerges: its tree runs on maintainers' machines, so every bump gets a human review.",
+      "matchPackageNames": ["renovate"],
+      "automerge": false
+    }
+  ]
 }
