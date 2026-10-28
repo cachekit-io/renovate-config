@@ -59,6 +59,11 @@ the self-hosted Renovate run that applies it (`config.js` +
   approval off for them. A repository with bounded overrides therefore also
   needs a CI check that the bounds still hold
 - Docker images and GitHub Actions are pinned by digest
+- Replacement, pin and rollback updates wait under Pending Approval on the
+  Dependency Dashboard, each in a branch of its own, first-party packages
+  included. Renovate does not check their release age, so the 5-day wait cannot
+  hold them. Ticking one opens its PR on the next run. Vulnerability fixes are
+  not held
 - Manifests under `test/`, `tests/` and `__tests__/` are scanned. This
   overrides the ignore list `config:recommended` applies, because test
   harnesses in this org carry real dependencies that Dependabot flags. Their
@@ -100,11 +105,27 @@ Reference: <https://docs.renovatebot.com/security-and-permissions/>
 
 ## Validating changes
 
+Install the pinned Renovate first:
+
+```sh
+npm ci --ignore-scripts
+```
+
 `renovate-config-validator` auto-detects the standard repo config file names
 and `config.js`, never a preset file such as `default.json`. Name the preset
 explicitly, and validate it as repository config rather than the more
 permissive global config:
 
 ```sh
-npx --yes --package renovate@43 -- renovate-config-validator --strict --no-global default.json
+npx renovate-config-validator --strict --no-global default.json
+```
+
+The validator does not check what a rule resolves to. `npm test` does: it
+runs `default.json` through the pinned Renovate's own preset, `packageRules`
+and branch-grouping code, and checks which updates wait for Dependency
+Dashboard approval. Set `PRESET=<path>` to run it against another copy of the
+preset.
+
+```sh
+npm test
 ```
