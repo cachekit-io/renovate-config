@@ -130,9 +130,13 @@ const targets = {
     onNpm({ ...npm('foo', '^2.0.0', pin('2.0.1', 2)), packageName: 'bar' }),
     onNpm({ ...npm('foo', '^2.0.0', pin('2.0.1', 2)), packageName: 'baz' }),
   ],
+  'the same pin in another manifest, which may use another registry': [
+    onNpm(npm('foo', '^2.0.0', pin('2.0.1', 2))),
+    { npm: [{ packageFile: 'packages/b/package.json', deps: [npm('foo', '^2.0.0', pin('2.0.1', 2))] }] },
+  ],
   'a pin of a same-named package in another ecosystem': [
     onNpm(npm('foo', '^2.0.0', pin('2.0.1', 2))),
-    { pep621: [{ packageFile: 'pyproject.toml', deps: [{ depName: 'foo', packageName: 'foo', datasource: 'pypi', currentValue: '>=2', updates: [pin('2.0.1', 2)] }] }] }, // same value, so only the datasource differs
+    { pep621: [{ packageFile: 'package.json', deps: [{ depName: 'foo', packageName: 'foo', datasource: 'pypi', currentValue: '>=2', updates: [pin('2.0.1', 2)] }] }] }, // same file and value, so only the datasource differs
   ],
 };
 for (const [name, [a, b]] of Object.entries(targets)) {
