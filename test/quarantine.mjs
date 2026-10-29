@@ -25,7 +25,7 @@ const HELD = ['replacement', 'pin', 'rollback'];
 const digest = `sha256:${'b'.repeat(64)}`;
 
 const npm = (depName, currentValue, update, extra = {}) => ({
-  depName, packageName: depName, datasource: 'npm', depType: 'dependencies', currentValue, updates: [update], ...extra,
+  depName, packageName: depName, datasource: 'npm', versioning: 'npm', depType: 'dependencies', currentValue, updates: [update], ...extra,
 });
 const pin = (newVersion, newMajor) => ({ updateType: 'pin', isPin: true, newValue: newVersion, newVersion, newMajor });
 const replacement = { depName: 'containerbase/base', packageName: 'containerbase/base', datasource: 'docker', currentValue: '1.0.0', updates: [{ updateType: 'replacement', newName: 'ghcr.io/containerbase/base', newValue: '1.0.0' }] };
@@ -49,6 +49,7 @@ function assertHeld({ updates, branches }, type) {
     const config = generateBranchConfig(branch);
     assert.equal(config.dependencyDashboardApproval, true, `${what}: its branch must wait for approval`);
     assert.equal(config.prCreation, 'immediate', `${what}: once ticked, its branch must open its PR on the same run`);
+    assert.equal(config.automerge, false, `${what}: a ticked update must be merged by hand, never automerged`);
   }
 }
 
@@ -105,6 +106,37 @@ test('pins leave the Pin Dependencies group and this preset\'s groups; pinDigest
   assert.ok(digestPins?.length && digestPins.every((u) => u.updateType === 'pinDigest'), 'digest pins still group');
   assertOpens(generateBranchConfig(digestPins), 'the digest pin group');
 });
+
+// Approval only gates a branch that does not exist yet, and an existing branch takes whatever target
+// Renovate gives it. Each pair below is one dependency on two runs, or two dependencies on one run: a
+// different target must get a different branch name, so it waits for its own tick.
+const docker = (newValue, extra = {}) => ({
+  dockerfile: [{ packageFile: 'Dockerfile', deps: [{ ...replacement, currentValue: newValue, updates: [{ ...replacement.updates[0], newValue, ...extra }] }] }],
+});
+const onNpm = (dep) => ({ npm: [{ packageFile: 'package.json', deps: [dep] }] });
+const rollback = (v) => npm('left-pad', '1.1.0', { updateType: 'rollback', newValue: v, newVersion: v, newMajor: 1 });
+const targets = {
+  'a pin to a newer release': [onNpm(npm('foo', '^2.0.0', pin('2.0.1', 2))), onNpm(npm('foo', '^2.0.0', pin('2.0.2', 2)))],
+  'a rollback to another release': [onNpm(rollback('1.0.0')), onNpm(rollback('1.0.1'))],
+  'a replacement to another value': [docker('1.0.0'), docker('1.1.0')],
+  'a replacement whose tag is re-pushed': [docker('1.0.0', { newDigest: `sha256:${'1'.repeat(64)}` }), docker('1.0.0', { newDigest: `sha256:${'2'.repeat(64)}` })],
+  'a replacement to another name': [docker('1.0.0'), docker('1.0.0', { newName: 'quay.io/containerbase/base' })],
+  'a pin of a same-named package in another ecosystem': [
+    onNpm(npm('foo', '^2.0.0', pin('2.0.1', 2))),
+    { pep621: [{ packageFile: 'pyproject.toml', deps: [{ depName: 'foo', packageName: 'foo', datasource: 'pypi', currentValue: '>=2', updates: [{ ...pin('2.0.1', 2), newValue: '==2.0.1' }] }] }] },
+  ],
+};
+for (const [name, [a, b]] of Object.entries(targets)) {
+  test(`a held branch is bound to its target: ${name}`, async () => {
+    const branchOf = async (files) => {
+      const held = (await resolveUpdates(files, { rollbackPrs: true })).updates.filter((u) => HELD.includes(u.updateType));
+      assert.equal(held.length, 1, 'fixture must produce one held update');
+      return held[0].branchName;
+    };
+    const [first, second] = [await branchOf(a), await branchOf(b)];
+    assert.notEqual(first, second, `both targets resolve to ${first}, so an approved branch would take the second without a tick`);
+  });
+}
 
 test('a major and a pin of the same dependency get separate branches', async () => {
   const resolved = await resolveUpdates({
