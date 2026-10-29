@@ -59,6 +59,20 @@ the self-hosted Renovate run that applies it (`config.js` +
   approval off for them. A repository with bounded overrides therefore also
   needs a CI check that the bounds still hold
 - Docker images and GitHub Actions are pinned by digest
+- Replacement, pin and rollback updates wait under Pending Approval on the
+  Dependency Dashboard, first-party packages included. Renovate does not check
+  their release age, so the 5-day wait cannot hold them. A tick approves one
+  target in one manifest: a newer release, another value or name, a new image
+  digest, or the same update in another manifest waits for its own tick. Each
+  dashboard line names the datasource, package and manifest, and the start of
+  the digest where there is one. Ticking one opens its PR on the run that
+  creates its branch. These PRs never automerge and carry the `stop-updating`
+  label: Renovate rebuilds an approved branch, resolving its lock file as of
+  that run, only when someone ticks it on the dashboard or ticks its PR's rebase
+  box. A ticked branch whose PR did not open waits under Other Branches, where a
+  global dashboard checkbox also rebuilds it. Every update of a package with an
+  open vulnerability alert opens at once, a replacement included: Renovate
+  forces approval off for them
 - Manifests under `test/`, `tests/` and `__tests__/` are scanned. This
   overrides the ignore list `config:recommended` applies, because test
   harnesses in this org carry real dependencies that Dependabot flags. Their
@@ -100,11 +114,27 @@ Reference: <https://docs.renovatebot.com/security-and-permissions/>
 
 ## Validating changes
 
-`renovate-config-validator` auto-detects the standard repo config file names
-and `config.js`, never a preset file such as `default.json`. Name the preset
-explicitly, and validate it as repository config rather than the more
-permissive global config:
+Install the pinned Renovate first:
 
 ```sh
-npx --yes --package renovate@43 -- renovate-config-validator --strict --no-global default.json
+npm ci --ignore-scripts
+```
+
+`renovate-config-validator` auto-detects the standard repo config file names
+and `config.js`, never a preset file such as `default.json`. `npm run validate`
+names the preset explicitly and validates it as repository config rather than
+the more permissive global config. It runs only the pinned local install:
+
+```sh
+npm run validate
+```
+
+The validator does not check what a rule resolves to. `npm test` does: it
+runs `default.json` through the pinned Renovate's own preset, `packageRules`
+and branch-grouping code, and checks which updates wait for Dependency
+Dashboard approval. Set `PRESET=<path>` to run it against another copy of the
+preset.
+
+```sh
+npm test
 ```

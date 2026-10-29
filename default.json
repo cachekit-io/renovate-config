@@ -20,7 +20,7 @@
   "osvVulnerabilityAlerts": true,
   "description": [
     "Scan manifests under `test/`, `tests/` and `__tests__/`: config:recommended ignores them via :ignoreModulesAndTests, but test harnesses in this org carry real dependencies, and a manifest Renovate never extracts can never receive a security PR.",
-    "Keep Renovate's default prCreation (immediate). CI in these repositories runs on pull requests, not on renovate/* branch pushes, so a branch has no status checks until its PR exists: not-pending or status-success would wait for checks that never start, and routine PRs would never open.",
+    "Keep Renovate's default prCreation (immediate). CI in these repositories runs on pull requests, not on renovate/* branch pushes, so a branch has no status checks until its PR exists: not-pending or status-success would wait for checks that never start, and routine PRs would never open. The release-age wait does not depend on it: Renovate marks a version update younger than minimumReleaseAge pending at lookup and creates no branch for it. Replacement, pin and rollback updates are held by a packageRule below.",
     "Renovate merges automerge PRs itself (platformAutomerge false) instead of arming GitHub's native auto-merge when it opens the PR. Native auto-merge waits only for the checks a branch rule marks as required. Renovate's own merge waits until nothing has failed, every check run it can see has finished as success, skipped or neutral, and every commit status other than its own passing renovate/* ones is success. Its own failed statuses (for example a lock file that failed to update) count as red, and a PR whose only statuses are its own passing ones stays pending. Checks and statuses from review bots count too, so this does not prove that CI ran: a repository that relies on automerge should require at least one CI status check. Do not set internalChecksAsSuccess: with it, a PR whose only status is the passing release-age check reads as green before CI has started."
   ],
   "ignorePaths": [
@@ -48,7 +48,8 @@
     "schedule": ["at any time"],
     "minimumReleaseAge": "0 days",
     "labels": ["dependencies", "security"],
-    "automerge": false
+    "automerge": false,
+    "rebaseWhen": "auto"
   },
 
   "lockFileMaintenance": {
@@ -144,6 +145,20 @@
       "description": "Pin Docker images by digest",
       "matchCategories": ["docker"],
       "pinDigests": true
+    },
+    {
+      "description": "Replacement (config:recommended's replacements:all, e.g. containerbase/base -> ghcr.io/containerbase/base), pin and rollback updates wait for Dependency Dashboard approval, first-party packages included: Renovate gives them no release timestamp, so minimumReleaseAge cannot hold them. Approval only holds a branch that does not exist yet, and an existing branch takes any upgrade that maps to its name when it is rebuilt. So each held update gets a branch of its own, named by a hash of its target and its manifest (hashedBranchLength hashes the branchTopic below before Renovate cleans branch names). A new target waits for its own tick, and so does the same target in another manifest, which may resolve from another registry. groupName null keeps held updates out of every group; this rule must stay after every rule that sets groupName. prCreation stays immediate, so a ticked update opens its PR on the run that creates its branch, and automerge is off. rebaseWhen never and the stop-updating label freeze an approved branch. Renovate rebuilds it, resolving its lock file as of that run, only when someone ticks that branch on the dashboard or ticks its PR's rebase box; a ticked branch whose PR did not open waits under Other Branches, where a global dashboard checkbox also rebuilds it. labels is the full list, so an alert's labels replace it and PRs under an alert still rebase. The commitMessageSuffix names the datasource, package, manifest and the first 16 hex characters of the digest, and commitMessageLowerCase never keeps the manifest's case, so the dashboard lines a maintainer ticks tell apart the targets the hash separates. Every update of a package with an open vulnerability alert opens at once, a replacement included: Renovate forces approval off for them, and vulnerabilityAlerts sets rebaseWhen back to auto so those PRs still rebase.",
+      "matchUpdateTypes": ["replacement", "pin", "rollback"],
+      "groupName": null,
+      "branchTopic": "{{{toJSON (toObject 'datasource' datasource 'packageName' packageName 'packageFile' packageFile 'depName' depName 'updateType' updateType 'newName' newName 'newValue' newValue 'newVersion' newVersion 'newDigest' newDigest)}}}",
+      "hashedBranchLength": 64,
+      "dependencyDashboardApproval": true,
+      "automerge": false,
+      "rebaseWhen": "never",
+      "commitMessageSuffix": "({{{datasource}}} {{{packageName}}} in `{{{packageFile}}}`{{#if newDigest}} @ {{{replace '^(?:sha256:)?([0-9a-f]{16}).*$' '$1' newDigest}}}{{/if}})",
+      "commitMessageLowerCase": "never",
+      "labels": ["dependencies", "stop-updating"],
+      "stopUpdatingLabel": "stop-updating"
     }
   ],
 
