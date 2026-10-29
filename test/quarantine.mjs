@@ -50,6 +50,7 @@ function assertHeld({ updates, branches }, type) {
     assert.equal(config.dependencyDashboardApproval, true, `${what}: its branch must wait for approval`);
     assert.equal(config.prCreation, 'immediate', `${what}: once ticked, its branch must open its PR on the same run`);
     assert.equal(config.automerge, false, `${what}: a ticked update must be merged by hand, never automerged`);
+    assert.equal(config.rebaseWhen, 'never', `${what}: an approved branch must not be rebuilt, or its lock file re-resolved, without a tick`);
   }
 }
 
@@ -109,7 +110,8 @@ test('pins leave the Pin Dependencies group and this preset\'s groups; pinDigest
 
 // Approval only gates a branch that does not exist yet, and an existing branch takes whatever target
 // Renovate gives it. Each pair below is one dependency on two runs, or two dependencies on one run: a
-// different target must get a different branch name, so it waits for its own tick.
+// different target or manifest must get a different branch name, so it waits for its own tick, and a
+// different PR title, so the Dependency Dashboard line a maintainer ticks tells the two apart.
 const docker = (newValue, extra = {}) => ({
   dockerfile: [{ packageFile: 'Dockerfile', deps: [{ ...replacement, currentValue: newValue, updates: [{ ...replacement.updates[0], newValue, ...extra }] }] }],
 });
@@ -140,14 +142,15 @@ const targets = {
   ],
 };
 for (const [name, [a, b]] of Object.entries(targets)) {
-  test(`a held branch is bound to its target: ${name}`, async () => {
-    const branchOf = async (files) => {
+  test(`a held branch is bound to its target and manifest: ${name}`, async () => {
+    const heldOf = async (files) => {
       const held = (await resolveUpdates(files, { rollbackPrs: true })).updates.filter((u) => HELD.includes(u.updateType));
       assert.equal(held.length, 1, 'fixture must produce one held update');
-      return held[0].branchName;
+      return { branchName: held[0].branchName, prTitle: generateBranchConfig(held).prTitle };
     };
-    const [first, second] = [await branchOf(a), await branchOf(b)];
-    assert.notEqual(first, second, `both targets resolve to ${first}, so an approved branch would take the second without a tick`);
+    const [first, second] = [await heldOf(a), await heldOf(b)];
+    assert.notEqual(first.branchName, second.branchName, `both resolve to ${first.branchName}, so an approved branch would take the second without a tick`);
+    assert.notEqual(first.prTitle, second.prTitle, `both show "${first.prTitle}" on the dashboard, so a tick cannot tell them apart`);
   });
 }
 
@@ -178,6 +181,7 @@ async function assertVulnerabilityFixOpens(config) {
   assert.equal(fix.isVulnerabilityAlert, true, 'the alert rule must match the fixture');
   assertOpens(fix, `replacement under an alert ${fix.branchName}`);
   assertOpens(generateBranchConfig([fix]), `the branch of the replacement under an alert ${fix.branchName}`);
+  assert.notEqual(fix.rebaseWhen, 'never', 'a PR opened under an alert must still rebase');
 }
 
 test('a replacement of a package with a GitHub alert opens at once', async () => {
