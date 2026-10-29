@@ -51,6 +51,7 @@ function assertHeld({ updates, branches }, type) {
     assert.equal(config.prCreation, 'immediate', `${what}: once ticked, its branch must open its PR on the same run`);
     assert.equal(config.automerge, false, `${what}: a ticked update must be merged by hand, never automerged`);
     assert.equal(config.rebaseWhen, 'never', `${what}: an approved branch must not be rebuilt, or its lock file re-resolved, without a tick`);
+    assert.ok(config.labels.includes('stop-updating') && config.stopUpdatingLabel === 'stop-updating', `${what}: its PR must carry the stop-updating label, or a global dashboard checkbox rebuilds it`);
   }
 }
 
@@ -109,7 +110,7 @@ test('pins leave the Pin Dependencies group and this preset\'s groups; pinDigest
 });
 
 // Approval only gates a branch that does not exist yet, and an existing branch takes whatever target
-// Renovate gives it. Each pair below is one dependency on two runs, or two dependencies on one run: a
+// Renovate gives it when it is rebuilt. Each pair below is one dependency on two runs, or two dependencies on one run: a
 // different target or manifest must get a different branch name, so it waits for its own tick, and a
 // different PR title, so the Dependency Dashboard line a maintainer ticks tells the two apart.
 const docker = (newValue, extra = {}) => ({
@@ -126,6 +127,14 @@ const targets = {
   'a pin to a release that differs only in a doubled hyphen': [
     onNpm(npm('foo', '^2.0.1-alpha', pin('2.0.1-alpha--beta', 2))),
     onNpm(npm('foo', '^2.0.1-alpha', pin('2.0.1-alpha-beta', 2))),
+  ],
+  'a replacement whose digest shares its first 7 characters': [
+    docker('1.0.0', { newDigest: `sha256:abcdef1${'1'.repeat(57)}` }),
+    docker('1.0.0', { newDigest: `sha256:abcdef1${'2'.repeat(57)}` }),
+  ],
+  'the same pin in manifests whose paths differ only in case': [
+    { npm: [{ packageFile: 'packages/Foo/package.json', deps: [npm('foo', '^2.0.0', pin('2.0.1', 2))] }] },
+    { npm: [{ packageFile: 'packages/foo/package.json', deps: [npm('foo', '^2.0.0', pin('2.0.1', 2))] }] },
   ],
   'a replacement to a name that differs only in punctuation': [docker('1.0.0', { newName: '@acme/tool' }), docker('1.0.0', { newName: 'acme-tool' })],
   'a pin of an npm alias to another package': [
@@ -182,6 +191,7 @@ async function assertVulnerabilityFixOpens(config) {
   assertOpens(fix, `replacement under an alert ${fix.branchName}`);
   assertOpens(generateBranchConfig([fix]), `the branch of the replacement under an alert ${fix.branchName}`);
   assert.notEqual(fix.rebaseWhen, 'never', 'a PR opened under an alert must still rebase');
+  assert.ok(!generateBranchConfig([fix]).labels.includes('stop-updating'), 'a PR opened under an alert must not carry the stop-updating label');
 }
 
 test('a replacement of a package with a GitHub alert opens at once', async () => {

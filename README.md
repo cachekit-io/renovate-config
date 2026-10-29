@@ -64,12 +64,15 @@ the self-hosted Renovate run that applies it (`config.js` +
   their release age, so the 5-day wait cannot hold them. A tick approves one
   target in one manifest: a newer release, another value or name, a new image
   digest, or the same update in another manifest waits for its own tick. Each
-  dashboard line names the datasource, package and manifest, and the digest
-  where there is one. Ticking one opens its PR on the run that creates its
-  branch. These PRs never automerge, and Renovate does not rebase them unless
-  someone ticks rebase. Every update of a package with an open vulnerability
-  alert opens at once, a replacement included: Renovate forces approval off for
-  them
+  dashboard line names the datasource, package and manifest, and the start of
+  the digest where there is one. Ticking one opens its PR on the run that
+  creates its branch. These PRs never automerge and carry the `stop-updating`
+  label: Renovate rebuilds an approved branch, resolving its lock file as of
+  that run, only when someone ticks it on the dashboard or ticks its PR's rebase
+  box. A ticked branch whose PR did not open waits under Other Branches, where a
+  global dashboard checkbox also rebuilds it. Every update of a package with an
+  open vulnerability alert opens at once, a replacement included: Renovate
+  forces approval off for them
 - Manifests under `test/`, `tests/` and `__tests__/` are scanned. This
   overrides the ignore list `config:recommended` applies, because test
   harnesses in this org carry real dependencies that Dependabot flags. Their
