@@ -121,9 +121,18 @@ const targets = {
   'a replacement to another value': [docker('1.0.0'), docker('1.1.0')],
   'a replacement whose tag is re-pushed': [docker('1.0.0', { newDigest: `sha256:${'1'.repeat(64)}` }), docker('1.0.0', { newDigest: `sha256:${'2'.repeat(64)}` })],
   'a replacement to another name': [docker('1.0.0'), docker('1.0.0', { newName: 'quay.io/containerbase/base' })],
+  'a pin to a release that differs only in a doubled hyphen': [
+    onNpm(npm('foo', '^2.0.1-alpha', pin('2.0.1-alpha--beta', 2))),
+    onNpm(npm('foo', '^2.0.1-alpha', pin('2.0.1-alpha-beta', 2))),
+  ],
+  'a replacement to a name that differs only in punctuation': [docker('1.0.0', { newName: '@acme/tool' }), docker('1.0.0', { newName: 'acme-tool' })],
+  'a pin of an npm alias to another package': [
+    onNpm({ ...npm('foo', '^2.0.0', pin('2.0.1', 2)), packageName: 'bar' }),
+    onNpm({ ...npm('foo', '^2.0.0', pin('2.0.1', 2)), packageName: 'baz' }),
+  ],
   'a pin of a same-named package in another ecosystem': [
     onNpm(npm('foo', '^2.0.0', pin('2.0.1', 2))),
-    { pep621: [{ packageFile: 'pyproject.toml', deps: [{ depName: 'foo', packageName: 'foo', datasource: 'pypi', currentValue: '>=2', updates: [{ ...pin('2.0.1', 2), newValue: '==2.0.1' }] }] }] },
+    { pep621: [{ packageFile: 'pyproject.toml', deps: [{ depName: 'foo', packageName: 'foo', datasource: 'pypi', currentValue: '>=2', updates: [pin('2.0.1', 2)] }] }] }, // same value, so only the datasource differs
   ],
 };
 for (const [name, [a, b]] of Object.entries(targets)) {

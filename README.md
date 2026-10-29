@@ -62,9 +62,9 @@ the self-hosted Renovate run that applies it (`config.js` +
 - Replacement, pin and rollback updates wait under Pending Approval on the
   Dependency Dashboard, first-party packages included. Renovate does not check
   their release age, so the 5-day wait cannot hold them. A tick approves one
-  target: the branch is named after the new version, value, replacement name
-  and digest, so a newer release or a re-pushed image gets a new branch that
-  waits for its own tick, and Renovate closes the old PR. Ticking one opens its
+  target: the branch name is a hash of the package and its new version, value,
+  replacement name and digest, so a newer release or a re-pushed image gets a
+  new branch that waits for its own tick, and Renovate closes the old PR. Ticking one opens its
   PR on the run that creates its branch. These PRs never automerge. Vulnerability
   fixes are not held
 - Manifests under `test/`, `tests/` and `__tests__/` are scanned. This
