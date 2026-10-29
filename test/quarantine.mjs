@@ -160,18 +160,23 @@ test('a major and a pin of the same dependency get separate branches', async () 
 });
 
 // Both alert sources append a packageRule whose force carries vulnerabilityAlerts, which resets
-// dependencyDashboardApproval to false and sets prCreation immediate.
-const vulnerable = { npm: [{ packageFile: 'package.json', deps: [npm('foo', '^2.0.0', pin('2.0.1', 2), { currentVersion: '2.0.0', lockedVersion: '2.0.0' })] }] };
+// dependencyDashboardApproval to false and sets prCreation immediate for every update of the alerted
+// package, a replacement included. An alert forces rangeStrategy update-lockfile, so lookup emits no pin
+// under it; a replacement is the held type that does occur. flattenUpdates writes into the fixture, so
+// each call gets a fresh one.
+const vulnerable = () => ({
+  npm: [{ packageFile: 'package.json', deps: [npm('foo', '2.0.0', { updateType: 'replacement', newName: 'bar', newValue: '2.0.0' }, { currentVersion: '2.0.0', lockedVersion: '2.0.0' })] }],
+});
 
 async function assertVulnerabilityFixOpens(config) {
-  assertHeld(await resolveUpdates(vulnerable), 'pin');
-  const fix = (await flattenUpdates(config, vulnerable)).find((u) => u.updateType === 'pin');
+  assertHeld(await resolveUpdates(vulnerable()), 'replacement');
+  const fix = (await flattenUpdates(config, vulnerable())).find((u) => u.updateType === 'replacement');
   assert.equal(fix.isVulnerabilityAlert, true, 'the alert rule must match the fixture');
-  assertOpens(fix, `vulnerability fix ${fix.branchName}`);
-  assertOpens(generateBranchConfig([fix]), `the branch of vulnerability fix ${fix.branchName}`);
+  assertOpens(fix, `replacement under an alert ${fix.branchName}`);
+  assertOpens(generateBranchConfig([fix]), `the branch of the replacement under an alert ${fix.branchName}`);
 }
 
-test('a GitHub vulnerability fix on a held type is not held', async () => {
+test('a replacement of a package with a GitHub alert opens at once', async () => {
   const alert = {
     security_advisory: { summary: 'test', identifiers: [{ type: 'GHSA', value: 'GHSA-xxxx-xxxx-xxxx' }], references: [], description: '' },
     security_vulnerability: { package: { ecosystem: 'npm', name: 'foo' }, first_patched_version: { identifier: '2.0.1' }, vulnerable_version_range: '< 2.0.1', severity: 'HIGH' },
@@ -184,13 +189,13 @@ test('a GitHub vulnerability fix on a held type is not held', async () => {
   await assertVulnerabilityFixOpens(config);
 });
 
-test('an OSV vulnerability fix on a held type is not held', async () => {
+test('a replacement of a package with an OSV advisory opens at once', async () => {
   const osv = {
     id: 'GHSA-yyyy-yyyy-yyyy', modified: '2026-01-01T00:00:00Z', summary: 'test', details: '',
     affected: [{ package: { ecosystem: 'npm', name: 'foo' }, ranges: [{ type: 'SEMVER', events: [{ introduced: '0' }, { fixed: '2.0.1' }] }] }],
   };
   const config = { ...base, packageRules: [...base.packageRules] };
-  await new Vulnerabilities({ getVulnerabilities: async () => [osv] }).appendVulnerabilityPackageRules(config, vulnerable);
+  await new Vulnerabilities({ getVulnerabilities: async () => [osv] }).appendVulnerabilityPackageRules(config, vulnerable());
   assert.ok(config.packageRules.some((r) => r.isVulnerabilityAlert), 'OSV advisory must produce a packageRule');
   await assertVulnerabilityFixOpens(config);
 });
