@@ -60,8 +60,27 @@
 
   "packageRules": [
     {
-      "description": "First-party cachekit-io packages propagate as fast as possible. They MUST have their own groupName: otherwise group:allNonMajor folds them into renovate/all-minor-patch, and that group follows the global (daily) schedule, silently overriding the at-any-time setting below (a grouped dep cannot keep its own schedule). With a dedicated group + no release-age quarantine (minimumReleaseAge defends against third-party supply-chain attacks, pointless for what we publish) + no schedule gate, an internal release (e.g. a cachekit-core patch) opens a dependent PR on the next hourly Renovate run. update-lockfile keeps the existing ^range and just bumps Cargo.lock. Major-version manual review still applies.",
-      "matchPackageNames": ["cachekit{/,}**", "@cachekit-io/**"],
+      "description": "First-party cachekit-io packages propagate as fast as possible. They MUST have their own groupName: otherwise group:allNonMajor folds them into renovate/all-minor-patch, and that group follows the global (daily) schedule, silently overriding the at-any-time setting below (a grouped dep cannot keep its own schedule). With a dedicated group + no release-age quarantine (minimumReleaseAge defends against third-party supply-chain attacks, pointless for what we publish) + no schedule gate, an internal release (e.g. a cachekit-core patch) opens a dependent PR on the next hourly Renovate run. update-lockfile keeps the existing ^range and just bumps Cargo.lock. Major-version manual review still applies. First-party means exactly what cachekit-io publishes: this rule and the next two each list one registry's published names, scoped to that datasource, because crates.io and PyPI have no namespace and the same name can belong to someone else on another registry. Any other cachekit* name keeps the global release-age wait and schedule. A newly published crate or PyPI package joins only when it is added here.",
+      "matchDatasources": ["crate"],
+      "matchPackageNames": ["cachekit-core", "cachekit-rs", "cachekit-macros", "cachekit-cli"],
+      "groupName": "first-party cachekit",
+      "minimumReleaseAge": "0 days",
+      "schedule": ["at any time"],
+      "rangeStrategy": "update-lockfile"
+    },
+    {
+      "description": "First-party cachekit-io packages on PyPI; see the crates.io rule above.",
+      "matchDatasources": ["pypi"],
+      "matchPackageNames": ["cachekit"],
+      "groupName": "first-party cachekit",
+      "minimumReleaseAge": "0 days",
+      "schedule": ["at any time"],
+      "rangeStrategy": "update-lockfile"
+    },
+    {
+      "description": "First-party cachekit-io packages on npm: the @cachekit-io scope, which only the cachekit-io npm organisation can publish to; see the crates.io rule above.",
+      "matchDatasources": ["npm"],
+      "matchPackageNames": ["@cachekit-io/**"],
       "groupName": "first-party cachekit",
       "minimumReleaseAge": "0 days",
       "schedule": ["at any time"],
@@ -111,7 +130,7 @@
       "automerge": true
     },
     {
-      "description": "Cargo treats a 0.x minor bump (0.12 to 0.13) as semver-incompatible, the same as a major, but Renovate classes it as minor, so it lands in a minor/patch group. There one such bump can break the whole group: a removed feature fails the Cargo.lock update, and an API change or a higher rust-version fails CI. Each such update gets its own PR instead. 0.x patch updates stay in their group. Keep this rule after the first-party and rust-dev-deps rules: a 0.x minor of a first-party crate or a Rust dev dependency then leaves that group too, and still gets every other setting those rules give it.",
+      "description": "Cargo treats a 0.x minor bump (0.12 to 0.13) as semver-incompatible, the same as a major, but Renovate classes it as minor, so it lands in a minor/patch group. There one such bump can break the whole group: a removed feature fails the Cargo.lock update, and an API change or a higher rust-version fails CI. Each such update gets its own PR instead. 0.x patch updates stay in their group. Keep this rule after the three first-party rules and the rust-dev-deps rule: a 0.x minor of a first-party crate or a Rust dev dependency then leaves that group too, and still gets every other setting those rules give it.",
       "matchManagers": ["cargo"],
       "matchCurrentVersion": "<1.0.0",
       "matchUpdateTypes": ["minor"],
