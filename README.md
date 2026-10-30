@@ -147,4 +147,4 @@ npm test
 
 The `Test preset` check (`.github/workflows/test.yml`) runs `npm ci
 --ignore-scripts`, `npm test` and `npm run validate` on every pull request,
-Renovate's own included, and goes red if either command fails.
+Renovate's own included, and goes red if any of them fails.

@@ -343,6 +343,7 @@ function inMemoryPlatform() {
   return { prs, unexpected, api: new Proxy(api, { get }) };
 }
 
+const manifest = (dependencies) => `${JSON.stringify({ dependencies }, null, 2)}\n`;
 const pinOfFoo = ({ packageFile = 'package.json', dep = {}, update = {} } = {}) => () => ({
   npm: [{ packageFile, deps: [npm('foo', '^2.0.0', { ...pin('2.0.1', 2), ...update }, dep)] }],
 });
@@ -365,7 +366,7 @@ async function twoRuns({ run2Files = pinOfFoo(), repoConfig = {}, env = {}, onBa
   try {
     gitIn(dir, 'init', '-q', '--bare', '-b', 'main', remote);
     gitIn(dir, 'clone', '-q', remote, seed);
-    await commitToBase({ 'package.json': '{\n  "dependencies": {\n    "foo": "^2.0.0"\n  }\n}\n' });
+    await commitToBase({ 'package.json': manifest({ foo: '^2.0.0' }) });
     await mkdir(local);
     GlobalConfig.set({ localDir: local, cacheDir: join(dir, 'cache') });
     platforms.set('in-memory', api);
@@ -404,7 +405,7 @@ async function twoRuns({ run2Files = pinOfFoo(), repoConfig = {}, env = {}, onBa
       assert.equal(shaOf(name), '', `run 2 must not push ${name}`);
     }
     assert.deepEqual(unexpected, [], 'processBranch made a platform call the in-memory platform does not model');
-    return { newBranch: newBranches.length > 0, newCommit: shaOf(approved) !== sha1 };
+    return { newBranch: newBranches.length > 0, newCommit: shaOf(approved) !== sha1, approvedResult: run2.get(approved) };
   } finally {
     for (const [key, value] of savedEnv) {
       if (value === undefined) delete process.env[key];
@@ -415,32 +416,35 @@ async function twoRuns({ run2Files = pinOfFoo(), repoConfig = {}, env = {}, onBa
   }
 }
 
-const NEW_BRANCH = { newBranch: true, newCommit: false };
-const NO_NEW_COMMIT = { newBranch: false, newCommit: false };
+// approvedResult is run 2's result for the approved branch: undefined when run 2 no longer resolves it.
+const NEW_BRANCH = { newBranch: true, newCommit: false, approvedResult: undefined };
+const NO_NEW_COMMIT = { newBranch: false, newCommit: false, approvedResult: 'no-work' };
+const BOTH = [true, false];
+const PR_OPEN = [true];
 const twoRunCases = {
-  'the datasource': [NEW_BRANCH, { run2Files: pinOfFoo({ dep: { datasource: 'github-tags' } }) }],
-  'the package name behind an alias': [NEW_BRANCH, { run2Files: pinOfFoo({ dep: { packageName: 'bar' } }) }],
-  'the manifest': [NEW_BRANCH, { run2Files: pinOfFoo({ packageFile: 'packages/b/package.json' }) }],
-  'the new name': [NEW_BRANCH, { run2Files: pinOfFoo({ update: { newName: 'bar' } }) }],
-  'the new value': [NEW_BRANCH, { run2Files: pinOfFoo({ update: { newValue: '2.0.2' } }) }],
-  'the new version': [NEW_BRANCH, { run2Files: pinOfFoo({ update: { newVersion: '2.0.2' } }) }],
-  'the new digest': [NEW_BRANCH, { run2Files: pinOfFoo({ update: { newDigest: digest } }) }],
-  'nothing': [NO_NEW_COMMIT, {}],
-  'the manifest text on the base branch': [NO_NEW_COMMIT, { onBase: { 'package.json': '{\n  "dependencies": {\n    "foo": "^2.0.0",\n    "qux": "^1.0.0"\n  }\n}\n' } }],
-  'a conflicting edit on the base branch': [NO_NEW_COMMIT, { onBase: { 'package.json': '{\n  "dependencies": {\n    "foo": "^2.0.5"\n  }\n}\n' } }],
-  'a lock file on the base branch': [NO_NEW_COMMIT, { onBase: { 'package-lock.json': '{ "lockfileVersion": 3, "packages": {} }\n' } }],
-  'the GitHub Actions lock file on the base branch': [NO_NEW_COMMIT, { onBase: { '.github/workflows/actions.lock': '{}\n' } }],
-  'a per-directory .npmrc on the base branch': [NO_NEW_COMMIT, { onBase: { '.npmrc': 'registry=https://registry.example.com/\n' } }],
-  'pip index lines on the base branch': [NO_NEW_COMMIT, { onBase: { 'requirements.txt': '--index-url https://pypi.example.com/simple\n' } }],
-  'uv indexes on the base branch': [NO_NEW_COMMIT, { onBase: { 'pyproject.toml': '[[tool.uv.index]]\nname = "example"\nurl = "https://pypi.example.com/simple"\n' } }],
-  '.cargo/config.toml on the base branch': [NO_NEW_COMMIT, { onBase: { '.cargo/config.toml': '[source.crates-io]\nreplace-with = "example"\n' } }],
-  'packageRules registryUrls': [NO_NEW_COMMIT, { repoConfig: { packageRules: [{ matchPackageNames: ['foo'], registryUrls: ['https://registry.example.com/'] }] } }],
-  'PIP_INDEX_URL': [NO_NEW_COMMIT, { env: { PIP_INDEX_URL: 'https://pypi.example.com/simple' } }],
-  'CARGO_REGISTRIES_*': [NO_NEW_COMMIT, { env: { CARGO_REGISTRIES_EXAMPLE_INDEX: 'sparse+https://crates.example.com/' } }],
-  'hostRules': [NO_NEW_COMMIT, { repoConfig: { hostRules: [{ matchHost: 'registry.npmjs.org', token: 'example' }] } }],
+  'the datasource': [NEW_BRANCH, PR_OPEN, { run2Files: pinOfFoo({ dep: { datasource: 'github-tags' } }) }],
+  'the package name behind an alias': [NEW_BRANCH, PR_OPEN, { run2Files: pinOfFoo({ dep: { packageName: 'bar' } }) }],
+  'the manifest': [NEW_BRANCH, PR_OPEN, { run2Files: pinOfFoo({ packageFile: 'packages/b/package.json' }) }],
+  'the new name': [NEW_BRANCH, PR_OPEN, { run2Files: pinOfFoo({ update: { newName: 'bar' } }) }],
+  'the new value': [NEW_BRANCH, PR_OPEN, { run2Files: pinOfFoo({ update: { newValue: '2.0.2' } }) }],
+  'the new version': [NEW_BRANCH, PR_OPEN, { run2Files: pinOfFoo({ update: { newVersion: '2.0.2' } }) }],
+  'the new digest': [NEW_BRANCH, PR_OPEN, { run2Files: pinOfFoo({ update: { newDigest: digest } }) }],
+  'nothing': [NO_NEW_COMMIT, PR_OPEN, {}],
+  'the manifest text on the base branch': [NO_NEW_COMMIT, BOTH, { onBase: { 'package.json': manifest({ foo: '^2.0.0', qux: '^1.0.0' }) } }],
+  'a conflicting edit on the base branch': [NO_NEW_COMMIT, BOTH, { onBase: { 'package.json': manifest({ foo: '^2.0.5' }) } }],
+  'a lock file on the base branch': [NO_NEW_COMMIT, BOTH, { onBase: { 'package-lock.json': '{ "lockfileVersion": 3, "packages": {} }\n' } }],
+  'the GitHub Actions lock file on the base branch': [NO_NEW_COMMIT, BOTH, { onBase: { '.github/workflows/actions.lock': '{}\n' } }],
+  'a per-directory .npmrc on the base branch': [NO_NEW_COMMIT, BOTH, { onBase: { '.npmrc': 'registry=https://registry.example.com/\n' } }],
+  'pip index lines on the base branch': [NO_NEW_COMMIT, BOTH, { onBase: { 'requirements.txt': '--index-url https://pypi.example.com/simple\n' } }],
+  'uv indexes on the base branch': [NO_NEW_COMMIT, BOTH, { onBase: { 'pyproject.toml': '[[tool.uv.index]]\nname = "example"\nurl = "https://pypi.example.com/simple"\n' } }],
+  '.cargo/config.toml on the base branch': [NO_NEW_COMMIT, BOTH, { onBase: { '.cargo/config.toml': '[source.crates-io]\nreplace-with = "example"\n' } }],
+  'packageRules registryUrls': [NO_NEW_COMMIT, PR_OPEN, { repoConfig: { packageRules: [{ matchPackageNames: ['foo'], registryUrls: ['https://registry.example.com/'] }] } }],
+  'PIP_INDEX_URL': [NO_NEW_COMMIT, PR_OPEN, { env: { PIP_INDEX_URL: 'https://pypi.example.com/simple' } }],
+  'CARGO_REGISTRIES_*': [NO_NEW_COMMIT, PR_OPEN, { env: { CARGO_REGISTRIES_EXAMPLE_INDEX: 'sparse+https://crates.example.com/' } }],
+  'hostRules': [NO_NEW_COMMIT, PR_OPEN, { repoConfig: { hostRules: [{ matchHost: 'registry.npmjs.org', token: 'example' }] } }],
 };
-for (const [input, [expected, change]] of Object.entries(twoRunCases)) {
-  for (const prOpened of expected.newBranch ? [true] : [true, false]) {
+for (const [input, [expected, prStates, change]] of Object.entries(twoRunCases)) {
+  for (const prOpened of prStates) {
     const outcome = expected.newBranch ? 'a new branch' : 'no new commit';
     test(`two runs, ${input} changed between them${prOpened ? '' : ', PR not opened'}: ${outcome}`, async () => {
       assert.deepEqual(await twoRuns({ ...change, prOpened }), expected);
@@ -448,9 +452,14 @@ for (const [input, [expected, change]] of Object.entries(twoRunCases)) {
   }
 }
 
+test('two runs, every open PR ticked for rebase: no new commit', async () => {
+  const result = await twoRuns({ onBase: { '.npmrc': 'registry=https://registry.example.com/\n' }, repoConfig: { dependencyDashboardRebaseAllOpen: true } });
+  assert.deepEqual(result, NO_NEW_COMMIT);
+});
+
 for (const prOpened of [true, false]) {
   test(`two runs, the base branch moved and the approved branch ticked for rebase${prOpened ? '' : ', PR not opened'}: a new commit`, async () => {
     const result = await twoRuns({ onBase: { '.npmrc': 'registry=https://registry.example.com/\n' }, tick2: 'rebase', prOpened });
-    assert.deepEqual(result, { newBranch: false, newCommit: true });
+    assert.deepEqual(result, { newBranch: false, newCommit: true, approvedResult: 'done' });
   });
 }
