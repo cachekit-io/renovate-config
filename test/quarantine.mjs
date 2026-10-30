@@ -1,9 +1,12 @@
 // Asserts which updates the preset holds for Dependency Dashboard approval, resolved through the pinned
-// Renovate's own preset, packageRules, flatten, vulnerability and branch-grouping code. Run with
-// `npm test` after `npm ci --ignore-scripts`; PRESET=<path> runs it against another default.json.
+// Renovate's own preset, packageRules, flatten, vulnerability, branch-grouping and branch-processing code. Run with
+// `npm test` after `npm ci --ignore-scripts`, with git on the PATH; PRESET=<path> runs it against another
+// default.json.
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 
 const dist = new URL('../node_modules/renovate/dist/', import.meta.url);
@@ -16,6 +19,7 @@ const { generateBranchConfig } = await load('workers/repository/updates/generate
 const { detectVulnerabilityAlerts } = await load('workers/repository/init/vulnerability.js');
 const { Vulnerabilities } = await load('workers/repository/process/vulnerabilities.js');
 const { setPlatformApi } = await load('modules/platform/index.js');
+const { isLimitReached, setCount } = await load('workers/global/limits.js');
 const { default: platforms } = await load('modules/platform/api.js');
 
 const presetPath = process.env.PRESET ? resolve(process.env.PRESET) : new URL('../default.json', import.meta.url);
@@ -28,8 +32,12 @@ const npm = (depName, currentValue, update, extra = {}) => ({
   depName, packageName: depName, datasource: 'npm', versioning: 'npm', depType: 'dependencies', currentValue, updates: [update], ...extra,
 });
 const pin = (newVersion, newMajor) => ({ updateType: 'pin', isPin: true, newValue: newVersion, newVersion, newMajor });
-const replacement = { depName: 'containerbase/base', packageName: 'containerbase/base', datasource: 'docker', currentValue: '1.0.0', updates: [{ updateType: 'replacement', newName: 'ghcr.io/containerbase/base', newValue: '1.0.0' }] };
-const pinDigest = { depName: 'alpine', packageName: 'alpine', datasource: 'docker', currentValue: '3.20', updates: [{ updateType: 'pinDigest', isPinDigest: true, newValue: '3.20', newDigest: digest }] };
+// flattenUpdates writes branchName into the fixture objects, so every fixture is built fresh per call.
+const replacement = (newValue = '1.0.0', extra = {}) => ({
+  depName: 'containerbase/base', packageName: 'containerbase/base', datasource: 'docker', currentValue: newValue,
+  updates: [{ updateType: 'replacement', newName: 'ghcr.io/containerbase/base', newValue, ...extra }],
+});
+const pinDigest = () => ({ depName: 'alpine', packageName: 'alpine', datasource: 'docker', currentValue: '3.20', updates: [{ updateType: 'pinDigest', isPinDigest: true, newValue: '3.20', newDigest: digest }] });
 
 // Resolves package files the way a repository run does after lookup: the preset, any repository
 // config, then packageRules per update, then branches grouped by branchName.
@@ -67,7 +75,7 @@ test('the held rule comes after every rule that sets groupName', () => {
 });
 
 test('a replacement alone is held', async () => {
-  assertHeld(await resolveUpdates({ dockerfile: [{ packageFile: 'Dockerfile', deps: [replacement] }] }), 'replacement');
+  assertHeld(await resolveUpdates({ dockerfile: [{ packageFile: 'Dockerfile', deps: [replacement()] }] }), 'replacement');
 });
 
 test('a pin alone is held', async () => {
@@ -83,7 +91,7 @@ test('a rollback alone is held (rollbackPrs: true)', async () => {
 
 test('pins leave the Pin Dependencies group and this preset\'s groups; pinDigest still groups', async () => {
   const resolved = await resolveUpdates({
-    dockerfile: [{ packageFile: 'Dockerfile', deps: [pinDigest] }],
+    dockerfile: [{ packageFile: 'Dockerfile', deps: [pinDigest()] }],
     npm: [{ packageFile: 'package.json', deps: [
       npm('foo', '^2.0.0', pin('2.0.1', 2)),
       npm('@cachekit-io/cachekit', '^1.3.0', pin('1.3.1', 1)),
@@ -113,9 +121,7 @@ test('pins leave the Pin Dependencies group and this preset\'s groups; pinDigest
 // Renovate gives it when it is rebuilt. Each pair below is one dependency on two runs, or two dependencies on one run: a
 // different target or manifest must get a different branch name, so it waits for its own tick, and a
 // different PR title, so the Dependency Dashboard line a maintainer ticks tells the two apart.
-const docker = (newValue, extra = {}) => ({
-  dockerfile: [{ packageFile: 'Dockerfile', deps: [{ ...replacement, currentValue: newValue, updates: [{ ...replacement.updates[0], newValue, ...extra }] }] }],
-});
+const docker = (newValue, extra = {}) => ({ dockerfile: [{ packageFile: 'Dockerfile', deps: [replacement(newValue, extra)] }] });
 const onNpm = (dep) => ({ npm: [{ packageFile: 'package.json', deps: [dep] }] });
 const rollback = (v) => npm('left-pad', '1.1.0', { updateType: 'rollback', newValue: v, newVersion: v, newMajor: 1 });
 const targets = {
@@ -163,6 +169,36 @@ for (const [name, [a, b]] of Object.entries(targets)) {
   });
 }
 
+test('a held branch keeps the stop-updating label when the repository names another', async () => {
+  const files = { npm: [{ packageFile: 'package.json', deps: [npm('foo', '^2.0.0', pin('2.0.1', 2))] }] };
+  const { updates } = await resolveUpdates(files, { stopUpdatingLabel: 'frozen' });
+  const config = generateBranchConfig(updates.filter((u) => u.updateType === 'pin'));
+  assert.equal(config.stopUpdatingLabel, 'stop-updating');
+  assert.ok(config.labels.includes('stop-updating'));
+});
+
+test('a held replacement\'s dashboard line shows the first 16 hex characters of its digest', async () => {
+  const { updates } = await resolveUpdates(docker('1.0.0', { newDigest: `sha256:abcdef1${'1'.repeat(57)}` }));
+  const { prTitle } = generateBranchConfig(updates.filter((u) => u.updateType === 'replacement'));
+  assert.ok(prTitle.endsWith('@ abcdef1111111111)'), prTitle);
+});
+
+test('a repository\'s hourly commit limit skips a non-held branch and not a held one', async () => {
+  const files = { npm: [{ packageFile: 'package.json', deps: [
+    npm('foo', '^2.0.0', pin('2.0.1', 2)),
+    npm('bar', '1.0.0', { updateType: 'major', newValue: '2.0.0', newVersion: '2.0.0', newMajor: 2 }),
+  ] }] };
+  const { branches } = await resolveUpdates(files, { commitHourlyLimit: 2 });
+  const branchOf = (type) => generateBranchConfig([...branches.values()].find((b) => b[0].updateType === type));
+  setCount('HourlyCommits', 2);
+  try {
+    assert.equal(isLimitReached('HourlyCommits', branchOf('major')), true, 'the fixture must reach the limit');
+    assert.equal(isLimitReached('HourlyCommits', branchOf('pin')), false);
+  } finally {
+    setCount('HourlyCommits', 0);
+  }
+});
+
 test('a major and a pin of the same dependency get separate branches', async () => {
   const resolved = await resolveUpdates({
     npm: [
@@ -178,8 +214,7 @@ test('a major and a pin of the same dependency get separate branches', async () 
 // Both alert sources append a packageRule whose force carries vulnerabilityAlerts, which resets
 // dependencyDashboardApproval to false and sets prCreation immediate for every update of the alerted
 // package, a replacement included. An alert forces rangeStrategy update-lockfile, so lookup emits no pin
-// under it; a replacement is the held type that does occur. flattenUpdates writes into the fixture, so
-// each call gets a fresh one.
+// under it; a replacement is the held type that does occur.
 const vulnerable = () => ({
   npm: [{ packageFile: 'package.json', deps: [npm('foo', '2.0.0', { updateType: 'replacement', newName: 'bar', newValue: '2.0.0' }, { currentVersion: '2.0.0', lockedVersion: '2.0.0' })] }],
 });
@@ -259,3 +294,163 @@ test('a 0.x minor of a first-party crate leaves the group and keeps the 0-day ag
   assert.equal(u.groupName, null);
   assert.equal(u.minimumReleaseAge, '0 days');
 });
+
+// Two runs of the pinned Renovate's processBranch, against a local git remote and an in-memory platform
+// that keys PRs by branch name. Run 1 ticks the held update on the Dependency Dashboard, which creates its
+// branch and PR. One input then changes, and run 2 processes every held branch it resolves to, with no tick.
+// "PR not opened" drops run 1's PR before run 2, as when a ticked branch's PR did not open. Both runs are
+// inside the schedule.
+const { processBranch } = await load('workers/repository/update/branch/index.js');
+const { platformScmImpls } = await load('modules/platform/scm.js');
+const { DefaultGitScm } = await load('modules/platform/default-scm.js');
+const { GlobalConfig } = await load('config/global.js');
+const git = await load('util/git/index.js');
+
+const gitIn = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=test', '-c', 'user.email=test@example.com', ...args], { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
+
+// Only the calls processBranch makes on these paths. processBranch catches errors, so an unexpected call
+// is recorded, and the test asserts there were none.
+function inMemoryPlatform() {
+  const prs = new Map();
+  const unexpected = [];
+  const api = {
+    getBranchPr: async (branchName) => prs.get(branchName) ?? null,
+    findPr: async ({ branchName }) => prs.get(branchName) ?? null,
+    createPr: async ({ sourceBranch, targetBranch, prTitle, labels }) => {
+      const pr = { number: prs.size + 1, sourceBranch, targetBranch, title: prTitle, labels, state: 'open' };
+      prs.set(sourceBranch, pr);
+      return pr;
+    },
+    tryReuseAutoclosedPr: async () => null,
+    addAssignees: async () => {},
+    refreshPr: async () => {},
+    updatePr: async ({ number, prTitle }) => {
+      const pr = [...prs.values()].find((p) => p.number === number);
+      pr.title = prTitle;
+    },
+    massageMarkdown: (body) => body,
+    labelCharLimit: () => 50,
+    getBranchStatus: async () => 'green',
+    getBranchStatusCheck: async () => null,
+    setBranchStatus: async () => {},
+    isBranchMergeQueueEnabled: async () => false,
+  };
+  const get = (t, key) => {
+    if (key in t || key === 'then') return t[key];
+    unexpected.push(String(key));
+    throw new Error(`unexpected platform call: ${String(key)}`);
+  };
+  return { prs, unexpected, api: new Proxy(api, { get }) };
+}
+
+const pinOfFoo = ({ packageFile = 'package.json', dep = {}, update = {} } = {}) => () => ({
+  npm: [{ packageFile, deps: [npm('foo', '^2.0.0', { ...pin('2.0.1', 2), ...update }, dep)] }],
+});
+
+async function twoRuns({ run2Files = pinOfFoo(), repoConfig = {}, env = {}, onBase, prOpened = true, tick2 }) {
+  const dir = await mkdtemp(join(tmpdir(), 'held-'));
+  const [remote, seed, local] = ['remote.git', 'seed', 'local'].map((d) => join(dir, d));
+  const commitToBase = async (files) => {
+    for (const [path, content] of Object.entries(files)) {
+      await mkdir(dirname(join(seed, path)), { recursive: true });
+      await writeFile(join(seed, path), content);
+    }
+    gitIn(seed, 'add', '-A');
+    gitIn(seed, 'commit', '-qm', 'base');
+    gitIn(seed, 'push', '-q', 'origin', 'main');
+  };
+  const shaOf = (branchName) => gitIn(remote, 'for-each-ref', '--format=%(objectname)', `refs/heads/${branchName}`);
+  const { prs, unexpected, api } = inMemoryPlatform();
+  const savedEnv = Object.entries(env).map(([key]) => [key, process.env[key]]);
+  try {
+    gitIn(dir, 'init', '-q', '--bare', '-b', 'main', remote);
+    gitIn(dir, 'clone', '-q', remote, seed);
+    await commitToBase({ 'package.json': '{\n  "dependencies": {\n    "foo": "^2.0.0"\n  }\n}\n' });
+    await mkdir(local);
+    GlobalConfig.set({ localDir: local, cacheDir: join(dir, 'cache') });
+    platforms.set('in-memory', api);
+    platformScmImpls.set('in-memory', DefaultGitScm);
+    setPlatformApi('in-memory');
+
+    const run = async (packageFiles, config, checks = () => undefined) => {
+      await git.initRepo({ url: remote, defaultBranch: 'main' });
+      git.setGitAuthor('Renovate Bot <bot@example.com>'); // after initRepo, which resets it
+      const runConfig = mergeChildConfig(base, { baseBranch: 'main', schedule: ['at any time'], fetchChangeLogs: 'off', ...config });
+      const results = new Map();
+      const held = (await flattenUpdates(runConfig, packageFiles())).filter((u) => HELD.includes(u.updateType));
+      for (const [branchName, upgrades] of Map.groupBy(held, (u) => u.branchName)) {
+        const branch = { ...generateBranchConfig(upgrades), packageFiles: packageFiles(), errors: [], warnings: [], dependencyDashboardChecks: checks(branchName) };
+        results.set(branchName, (await processBranch(branch)).result);
+      }
+      return results;
+    };
+
+    const run1 = await run(pinOfFoo(), {}, (name) => ({ [name]: 'approve' }));
+    assert.equal(run1.size, 1, 'run 1 must resolve one branch');
+    const [[approved, result1]] = run1;
+    assert.equal(result1, 'pr-created', 'run 1 must create the ticked branch and its PR');
+    const sha1 = shaOf(approved);
+    assert.ok(sha1, 'run 1 must push the ticked branch');
+    assert.deepEqual(unexpected, [], 'run 1 made a platform call the in-memory platform does not model');
+    assert.equal(prs.get(approved)?.labels?.includes('stop-updating'), true, 'run 1 must open the PR with the stop-updating label');
+    if (!prOpened) prs.clear();
+
+    if (onBase) await commitToBase(onBase);
+    Object.assign(process.env, env);
+    const run2 = await run(run2Files, repoConfig, (name) => (name === approved && tick2 ? { [name]: tick2 } : undefined));
+    const newBranches = [...run2].filter(([name]) => name !== approved);
+    for (const [name, result] of newBranches) {
+      assert.equal(result, 'needs-approval', `run 2's new branch ${name} must wait for its own tick`);
+      assert.equal(shaOf(name), '', `run 2 must not push ${name}`);
+    }
+    assert.deepEqual(unexpected, [], 'processBranch made a platform call the in-memory platform does not model');
+    return { newBranch: newBranches.length > 0, newCommit: shaOf(approved) !== sha1 };
+  } finally {
+    for (const [key, value] of savedEnv) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    GlobalConfig.reset();
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+const NEW_BRANCH = { newBranch: true, newCommit: false };
+const NO_NEW_COMMIT = { newBranch: false, newCommit: false };
+const twoRunCases = {
+  'the datasource': [NEW_BRANCH, { run2Files: pinOfFoo({ dep: { datasource: 'github-tags' } }) }],
+  'the package name behind an alias': [NEW_BRANCH, { run2Files: pinOfFoo({ dep: { packageName: 'bar' } }) }],
+  'the manifest': [NEW_BRANCH, { run2Files: pinOfFoo({ packageFile: 'packages/b/package.json' }) }],
+  'the new name': [NEW_BRANCH, { run2Files: pinOfFoo({ update: { newName: 'bar' } }) }],
+  'the new value': [NEW_BRANCH, { run2Files: pinOfFoo({ update: { newValue: '2.0.2' } }) }],
+  'the new version': [NEW_BRANCH, { run2Files: pinOfFoo({ update: { newVersion: '2.0.2' } }) }],
+  'the new digest': [NEW_BRANCH, { run2Files: pinOfFoo({ update: { newDigest: digest } }) }],
+  'nothing': [NO_NEW_COMMIT, {}],
+  'the manifest text on the base branch': [NO_NEW_COMMIT, { onBase: { 'package.json': '{\n  "dependencies": {\n    "foo": "^2.0.0",\n    "qux": "^1.0.0"\n  }\n}\n' } }],
+  'a conflicting edit on the base branch': [NO_NEW_COMMIT, { onBase: { 'package.json': '{\n  "dependencies": {\n    "foo": "^2.0.5"\n  }\n}\n' } }],
+  'a lock file on the base branch': [NO_NEW_COMMIT, { onBase: { 'package-lock.json': '{ "lockfileVersion": 3, "packages": {} }\n' } }],
+  'the GitHub Actions lock file on the base branch': [NO_NEW_COMMIT, { onBase: { '.github/workflows/actions.lock': '{}\n' } }],
+  'a per-directory .npmrc on the base branch': [NO_NEW_COMMIT, { onBase: { '.npmrc': 'registry=https://registry.example.com/\n' } }],
+  'pip index lines on the base branch': [NO_NEW_COMMIT, { onBase: { 'requirements.txt': '--index-url https://pypi.example.com/simple\n' } }],
+  'uv indexes on the base branch': [NO_NEW_COMMIT, { onBase: { 'pyproject.toml': '[[tool.uv.index]]\nname = "example"\nurl = "https://pypi.example.com/simple"\n' } }],
+  '.cargo/config.toml on the base branch': [NO_NEW_COMMIT, { onBase: { '.cargo/config.toml': '[source.crates-io]\nreplace-with = "example"\n' } }],
+  'packageRules registryUrls': [NO_NEW_COMMIT, { repoConfig: { packageRules: [{ matchPackageNames: ['foo'], registryUrls: ['https://registry.example.com/'] }] } }],
+  'PIP_INDEX_URL': [NO_NEW_COMMIT, { env: { PIP_INDEX_URL: 'https://pypi.example.com/simple' } }],
+  'CARGO_REGISTRIES_*': [NO_NEW_COMMIT, { env: { CARGO_REGISTRIES_EXAMPLE_INDEX: 'sparse+https://crates.example.com/' } }],
+  'hostRules': [NO_NEW_COMMIT, { repoConfig: { hostRules: [{ matchHost: 'registry.npmjs.org', token: 'example' }] } }],
+};
+for (const [input, [expected, change]] of Object.entries(twoRunCases)) {
+  for (const prOpened of expected.newBranch ? [true] : [true, false]) {
+    const outcome = expected.newBranch ? 'a new branch' : 'no new commit';
+    test(`two runs, ${input} changed between them${prOpened ? '' : ', PR not opened'}: ${outcome}`, async () => {
+      assert.deepEqual(await twoRuns({ ...change, prOpened }), expected);
+    });
+  }
+}
+
+for (const prOpened of [true, false]) {
+  test(`two runs, the base branch moved and the approved branch ticked for rebase${prOpened ? '' : ', PR not opened'}: a new commit`, async () => {
+    const result = await twoRuns({ onBase: { '.npmrc': 'registry=https://registry.example.com/\n' }, tick2: 'rebase', prOpened });
+    assert.deepEqual(result, { newBranch: false, newCommit: true });
+  });
+}
