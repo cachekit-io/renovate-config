@@ -239,7 +239,7 @@ const firstPartyCases = [
   ['pep621', 'pypi', 'cachekit-core', false],
 ];
 for (const [manager, datasource, name, firstParty] of firstPartyCases) {
-  test(`${datasource} ${name} ${firstParty ? 'gets the first-party 0-day age' : 'keeps the 5-day age'}`, async () => {
+  test(`${datasource} ${name} ${firstParty ? 'is first-party: 0-day age, own group, any time' : 'is not first-party: global age and schedule'}`, async () => {
     const u = await resolveOne(manager, release(datasource, name, '1.0.0', 'patch', '1.0.1'));
     if (firstParty) {
       assert.equal(u.minimumReleaseAge, '0 days');
