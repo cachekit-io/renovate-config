@@ -227,7 +227,7 @@ const release = (datasource, name, currentValue, updateType, newVersion) => ({
   updates: [{ updateType, newValue: newVersion, newVersion, newMajor: Number(newVersion.split('.')[0]) }],
 });
 const resolveOne = async (manager, dep) => (await resolveUpdates({ [manager]: [{ packageFile: 'manifest', deps: [dep] }] })).updates[0];
-const releaseAge = [
+const firstPartyCases = [
   ['cargo', 'crate', 'cachekit-core', true],
   ['cargo', 'crate', 'cachekit-rs', true],
   ['cargo', 'crate', 'cachekit-macros', true],
@@ -238,7 +238,7 @@ const releaseAge = [
   ['npm', 'npm', 'cachekit-ts', false],
   ['pep621', 'pypi', 'cachekit-core', false],
 ];
-for (const [manager, datasource, name, firstParty] of releaseAge) {
+for (const [manager, datasource, name, firstParty] of firstPartyCases) {
   test(`${datasource} ${name} ${firstParty ? 'gets the first-party 0-day age' : 'keeps the 5-day age'}`, async () => {
     const u = await resolveOne(manager, release(datasource, name, '1.0.0', 'patch', '1.0.1'));
     if (firstParty) {
