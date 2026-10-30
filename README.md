@@ -73,10 +73,11 @@ the self-hosted Renovate run that applies it (`config.js` +
   creates its branch. These PRs never automerge and carry the `stop-updating`
   label: Renovate rebuilds an approved branch, resolving its lock file as of
   that run, only when someone ticks it on the dashboard or ticks its PR's rebase
-  box. A ticked branch whose PR did not open waits under Other Branches, where a
-  global dashboard checkbox also rebuilds it. Every update of a package with an
-  open vulnerability alert opens at once, a replacement included: Renovate
-  forces approval off for them
+  box. A ticked branch whose PR did not open waits under Other Branches, and
+  any of the dashboard's global checkboxes also rebuilds it. A repository's
+  hourly commit limit never lists one of these branches as rate-limited. Every
+  update of a package with an open vulnerability alert opens at once, a
+  replacement included: Renovate forces approval off for them
 - Manifests under `test/`, `tests/` and `__tests__/` are scanned. This
   overrides the ignore list `config:recommended` applies, because test
   harnesses in this org carry real dependencies that Dependabot flags. Their
@@ -136,9 +137,14 @@ npm run validate
 The validator does not check what a rule resolves to. `npm test` does: it
 runs `default.json` through the pinned Renovate's own preset, `packageRules`
 and branch-grouping code, and checks which updates wait for Dependency
-Dashboard approval. Set `PRESET=<path>` to run it against another copy of the
-preset.
+Dashboard approval. It also runs Renovate's branch processing twice against a
+throwaway local git repository, so it needs `git` on the `PATH`. Set
+`PRESET=<path>` to run it against another copy of the preset.
 
 ```sh
 npm test
 ```
+
+The `Test preset` check (`.github/workflows/test.yml`) runs `npm ci
+--ignore-scripts`, `npm test` and `npm run validate` on every pull request,
+Renovate's own included, and goes red if any of them fails.
