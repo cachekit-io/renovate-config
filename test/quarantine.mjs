@@ -357,7 +357,7 @@ async function twoRuns({ run2Files = pinOfFoo(), repoConfig = {}, env = {}, onBa
     }
     gitIn(seed, 'add', '-A');
     gitIn(seed, 'commit', '-qm', 'base');
-    gitIn(seed, 'push', '-q', 'origin', 'main');
+    gitIn(seed, 'push', '-q', 'origin', 'HEAD:main');
   };
   const shaOf = (branchName) => gitIn(remote, 'for-each-ref', '--format=%(objectname)', `refs/heads/${branchName}`);
   const { prs, unexpected, api } = inMemoryPlatform();
