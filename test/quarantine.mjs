@@ -217,3 +217,45 @@ test('a replacement of a package with an OSV advisory opens at once', async () =
   assert.ok(config.packageRules.some((r) => r.isVulnerabilityAlert), 'OSV advisory must produce a packageRule');
   await assertVulnerabilityFixOpens(config);
 });
+
+// crates.io and PyPI have no namespace, so the preset names each first-party package exactly, on its
+// own datasource. Any other cachekit* name keeps the global release-age wait and schedule.
+const FIRST_PARTY = 'first-party cachekit';
+const VERSIONING = { crate: 'cargo', pypi: 'pep440', npm: 'npm' }; // as lookup sets them
+const release = (datasource, name, currentValue, updateType, newVersion) => ({
+  depName: name, packageName: name, datasource, versioning: VERSIONING[datasource], depType: 'dependencies', currentValue,
+  updates: [{ updateType, newValue: newVersion, newVersion, newMajor: Number(newVersion.split('.')[0]) }],
+});
+const resolveOne = async (manager, dep) => (await resolveUpdates({ [manager]: [{ packageFile: 'manifest', deps: [dep] }] })).updates[0];
+const firstPartyCases = [
+  ['cargo', 'crate', 'cachekit-core', true],
+  ['cargo', 'crate', 'cachekit-rs', true],
+  ['cargo', 'crate', 'cachekit-macros', true],
+  ['cargo', 'crate', 'cachekit-cli', true],
+  ['pep621', 'pypi', 'cachekit', true],
+  ['npm', 'npm', '@cachekit-io/cachekit', true],
+  ['cargo', 'crate', 'cachekit', false],
+  ['npm', 'npm', 'cachekit-ts', false],
+  ['pep621', 'pypi', 'cachekit-core', false],
+];
+for (const [manager, datasource, name, firstParty] of firstPartyCases) {
+  test(`${datasource} ${name} ${firstParty ? 'is first-party: 0-day age, own group, any time' : 'is not first-party: global age and schedule'}`, async () => {
+    const u = await resolveOne(manager, release(datasource, name, '1.0.0', 'patch', '1.0.1'));
+    if (firstParty) {
+      assert.equal(u.minimumReleaseAge, '0 days');
+      assert.equal(u.groupName, FIRST_PARTY);
+      assert.deepEqual(u.schedule, ['at any time']);
+      assert.equal(u.rangeStrategy, 'update-lockfile');
+    } else {
+      assert.equal(u.minimumReleaseAge, '5 days');
+      assert.notEqual(u.groupName, FIRST_PARTY);
+      assert.deepEqual(u.schedule, base.schedule);
+    }
+  });
+}
+
+test('a 0.x minor of a first-party crate leaves the group and keeps the 0-day age', async () => {
+  const u = await resolveOne('cargo', release('crate', 'cachekit-core', '0.7.0', 'minor', '0.8.0'));
+  assert.equal(u.groupName, null);
+  assert.equal(u.minimumReleaseAge, '0 days');
+});

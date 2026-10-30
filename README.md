@@ -17,7 +17,11 @@ the self-hosted Renovate run that applies it (`config.js` +
   automerged
 - Third-party releases wait 5 days (`minimumReleaseAge`) before they are
   proposed; first-party cachekit-io packages propagate immediately in their
-  own group
+  own group. First-party means exactly these published names, each on its own
+  registry: crates.io `cachekit-core`, `cachekit-rs`, `cachekit-macros` and
+  `cachekit-cli`; PyPI `cachekit`; npm `@cachekit-io/*`. Any other name,
+  `cachekit*` included, waits 5 days. A new crate or PyPI package joins only
+  when the preset adds it
 - Lock file maintenance PRs skip that wait: Renovate has no release date to
   check them against. npm refreshes get a best-effort `--before` at the same
   5 days; pnpm and yarn refreshes get only the repo's own package-manager
