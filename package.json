@@ -1,6 +1,6 @@
 {
   "devDependencies": {
-    "renovate": "44.181.0"
+    "renovate": "44.182.2"
   },
   "private": true,
   "description": "Pins the Renovate version that test/quarantine.mjs checks default.json against.",
